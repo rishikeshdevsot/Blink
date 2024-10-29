@@ -8,6 +8,7 @@
 
 #include "MIPHelper.h"
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,12 +18,19 @@
 // disabled.
 uint32_t __llvm_mip_global_timestamp = 1;
 
-void __llvm_mip_runtime_initialize(void) { atexit(__llvm_dump_mip_profile); }
+void dumpProfileOnSignal(int signal) { __llvm_dump_mip_profile(); }
+
+void __llvm_mip_runtime_initialize(void) {
+  struct sigaction DumpProfile;
+  DumpProfile.sa_flags = 0;
+  DumpProfile.sa_handler = &dumpProfileOnSignal;
+  sigaction(SIGUSR2, &DumpProfile, NULL);
+}
 
 void __llvm_dump_mip_profile(void) {
   const char *Filename = getenv("LLVM_MIP_PROFILE_FILENAME");
   if (!Filename || !Filename[0])
-    Filename = "default.mipraw";
+    Filename = "/data/local/tmp/default.mipraw";
 
   char *FormatSpecifierPtr;
   char Buffer[strlen(Filename) + 3];

@@ -197,6 +197,17 @@ std::error_code MIPMapReader::readData(std::unique_ptr<MemoryBuffer> &Buffer,
   const char *Data = Buffer->getBufferStart() + MIP->Header.OffsetToData;
 
   while (Data < Buffer->getBufferEnd()) {
+    // The __llvm_mipmap section may contain extraneous header sections in
+    // between because of linking multiple object files. These need to be
+    // ignored. An MIP Header consists of a 4-byte magic value followed by 28
+    // bytes.
+    while (MIP_MAGIC_VALUE ==
+           endian::readNext<uint32_t, little, unaligned>(Data)) {
+      Data = Data + 28;
+    }
+    // reset if not an MIP header.
+    Data = Data - 4;
+
     uint64_t CurrentOffset = Data - Buffer->getBufferStart();
     const auto &Profile = readNextProfile(Data, CurrentOffset, MIP->Header);
     MIP->Profiles.push_back(*Profile->get());
