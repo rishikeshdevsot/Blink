@@ -20,9 +20,13 @@ void *__llvm_mip_profile_end(void);
 void __llvm_mip_runtime_initialize(void);
 
 typedef struct {
-  uint32_t CallCount;
-  uint32_t Timestamp;
-  // uint8_t BlockCoverage[BlockCount];
+  uint32_t CallCount;       // Function Invocation counter
+  uint32_t Timestamp;       // set to 0xffffffff
+  int64_t OffsetToFunction; // PC relative offset to the function address
+  uint32_t DisabledFlag;    // flag specifying if instrumentation is disabled
+  uint32_t NumExitBlocks;   // Number of exit blocks in function
+  uint32_t ExitBlockOffsetArray; // array containing offset from function entry
+                                 // to exit instrumentations
 } ProfileData_t;
 
 #endif // MIP_MIPHELPER_H

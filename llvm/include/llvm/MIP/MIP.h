@@ -31,11 +31,11 @@ struct CallEdge {
 struct MBBProfile {
   // Function-relative machine basic block offset
   uint32_t Offset;
-  // True if this block was executed
-  bool IsCovered;
+  // Number of times the basic block executed
+  uint32_t BlockCount;
 
-  MBBProfile() : Offset(0), IsCovered(false) {}
-  MBBProfile(uint32_t Offset) : Offset(Offset), IsCovered(false) {}
+  MBBProfile() : Offset(0), BlockCount(0) {}
+  MBBProfile(uint32_t Offset) : Offset(Offset), BlockCount(0) {}
 };
 
 // Machine IR profile data of a machine function.
@@ -83,7 +83,7 @@ struct MFRawProfile {
   bool IsFunctionCovered = 0;
 
   // MIPProfileType::BLOCK_COVERAGE
-  SmallVector<bool, 8> BasicBlockCoverage;
+  SmallVector<uint32_t, 8> BasicBlockExecCount;
 
   // MIPProfileType::FUNCTION_CALL_COUNT
   uint32_t FunctionCallCount = 0;

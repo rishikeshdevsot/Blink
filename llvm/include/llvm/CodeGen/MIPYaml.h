@@ -72,7 +72,7 @@ template <> struct MappingTraits<llvm::MachineProfile::CallEdge> {
 template <> struct MappingTraits<llvm::MachineProfile::MBBProfile> {
   static void mapping(IO &io, llvm::MachineProfile::MBBProfile &Profile) {
     mapRequiredAsHex<Hex32>(io, "Offset", Profile.Offset);
-    io.mapRequired("Covered", Profile.IsCovered);
+    io.mapRequired("Covered", Profile.BlockCount);
   }
 };
 

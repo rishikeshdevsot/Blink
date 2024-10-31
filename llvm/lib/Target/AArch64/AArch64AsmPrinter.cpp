@@ -110,6 +110,7 @@ public:
   void LowerMIP_FUNCTION_COVERAGE_INSTRUMENTATION(const MachineInstr &MI);
   void LowerMIP_INSTRUMENTATION(const MachineInstr &MI);
   void LowerMIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION(const MachineInstr &MI);
+  void LowerMIP_BASIC_BLOCK_INSTRUMENTATION(const MachineInstr &MI);
   void LowerPATCHABLE_FUNCTION_EXIT(const MachineInstr &MI);
   void LowerPATCHABLE_TAIL_CALL(const MachineInstr &MI);
 
@@ -299,18 +300,98 @@ void AArch64AsmPrinter::LowerMIP_FUNCTION_COVERAGE_INSTRUMENTATION(
 void AArch64AsmPrinter::LowerMIP_INSTRUMENTATION(const MachineInstr &MI) {
   auto *RawProfileSymbol = MIPEmitter.getRawProfileSymbol(*MI.getMF());
 
-  const auto ProfileRegister = AArch64::X16;
+  const auto DataValueRegister = AArch64::X17;
+  const auto TempValueRegister = AArch64::X9;
+  const auto DataValueRegister_32bit = AArch64::W17;
+  const auto TempValueRegister_32bit = AArch64::W9;
   auto RawAddressPageMO =
       MachineOperand::CreateMCSymbol(RawProfileSymbol, AArch64II::MO_PAGE);
   auto RawAddressPageOffsetMO = MachineOperand::CreateMCSymbol(
       RawProfileSymbol, AArch64II::MO_PAGEOFF | AArch64II::MO_NC);
-  auto HelperSymbolMO = MI.getOperand(1);
-  MCOperand RawAddressPageMCO, RawAddressPageOffsetMCO, HelperSymbolMCO;
+  auto UniqueLocationID = MI.getOperand(1).getImm();
+  auto IsExitBlock = MI.getOperand(3).getImm();
+  auto isDynamicMode = MI.getOperand(4).getImm();
+  MCOperand CustomInstrSymbolPageMCO, CustomInstrSymbolPageOffsetMCO;
+  if (!IsExitBlock) {
+    auto CustomInstrSymbolPageMO = MachineOperand::CreateES(
+        "__custom_instrumentation", AArch64II::MO_PAGE);
+    auto CustomInstrSymbolPageOffsetMO = MachineOperand::CreateES(
+        "__custom_instrumentation", AArch64II::MO_PAGEOFF | AArch64II::MO_NC);
+    lowerOperand(CustomInstrSymbolPageMO, CustomInstrSymbolPageMCO);
+    lowerOperand(CustomInstrSymbolPageOffsetMO, CustomInstrSymbolPageOffsetMCO);
+  } else {
+    auto CustomInstrSymbolPageMO = MachineOperand::CreateES(
+        "__custom_instrumentation_exit", AArch64II::MO_PAGE);
+    auto CustomInstrSymbolPageOffsetMO =
+        MachineOperand::CreateES("__custom_instrumentation_exit",
+                                 AArch64II::MO_PAGEOFF | AArch64II::MO_NC);
+    lowerOperand(CustomInstrSymbolPageMO, CustomInstrSymbolPageMCO);
+    lowerOperand(CustomInstrSymbolPageOffsetMO, CustomInstrSymbolPageOffsetMCO);
+  }
+  MCOperand RawAddressPageMCO, RawAddressPageOffsetMCO, CustomInstrSymbolMCO;
   lowerOperand(RawAddressPageMO, RawAddressPageMCO);
   lowerOperand(RawAddressPageOffsetMO, RawAddressPageOffsetMCO);
-  lowerOperand(HelperSymbolMO, HelperSymbolMCO);
 
   OutStreamer->AddComment("MIP: Instrumentation");
+  if (isDynamicMode) {
+    // will be dynamically re-written to no-op to enable instrumentation
+    // bl +56 (14 instructions)
+    EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::B).addImm(14));
+  } else {
+    // nop for fault tolrence in case binary rewrite is triggered
+    EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::B).addImm(1));
+  }
+
+  // stp x0, x8, [sp, #-16]!
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::STPXpre)
+                                   .addReg(AArch64::SP)
+                                   .addReg(AArch64::X0)
+                                   .addReg(AArch64::X8)
+                                   .addReg(AArch64::SP)
+                                   .addImm(-2));
+  // str x1, [sp, #-16]!
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::STRXpre)
+                                   .addReg(AArch64::SP)
+                                   .addReg(AArch64::X1)
+                                   .addReg(AArch64::SP)
+                                   .addImm(-16));
+
+  // mov w1, <(CodeLocationID & 0xffff)>
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::MOVZWi)
+                                   .addReg(AArch64::W1)
+                                   .addImm(UniqueLocationID & 0xFFFF)
+                                   .addImm(0));
+  // movk w1, <(CodeLocationID >> 16)>, 16
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::MOVKWi)
+                                   .addReg(AArch64::W1)
+                                   .addReg(AArch64::W1)
+                                   .addImm((UniqueLocationID >> 16) & 0xFFFF)
+                                   .addImm(16));
+
+  // adrp   <ArgumentRegister>, <RawProfileSymbolPage>
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::ADRP)
+                                   .addReg(AArch64::X0)
+                                   .addOperand(RawAddressPageMCO));
+
+  // add    <ArgumentRegister>, <ArgumentRegister>, <RawProfileSymbolPageOffset>
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::ADDXri)
+                                   .addReg(AArch64::X0)
+                                   .addReg(AArch64::X0)
+                                   .addOperand(RawAddressPageOffsetMCO)
+                                   .addImm(0));
+
+  // adrp   <ArgumentRegister>, <RawProfileSymbolPage>
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::ADRP)
+                                   .addReg(AArch64::X16)
+                                   .addOperand(CustomInstrSymbolPageMCO));
+
+  // add    <ArgumentRegister>, <ArgumentRegister>, <RawProfileSymbolPageOffset>
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::ADDXri)
+                                   .addReg(AArch64::X16)
+                                   .addReg(AArch64::X16)
+                                   .addOperand(CustomInstrSymbolPageOffsetMCO)
+                                   .addImm(0));
+
   // stp    x29, x30, [sp, #-16]!
   EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::STPXpre)
                                    .addReg(AArch64::SP)
@@ -318,79 +399,47 @@ void AArch64AsmPrinter::LowerMIP_INSTRUMENTATION(const MachineInstr &MI) {
                                    .addReg(AArch64::LR)
                                    .addReg(AArch64::SP)
                                    .addImm(-2));
-  // adrp   <ProfileRegister>, <RawProfileSymbolPage>
-  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::ADRP)
-                                   .addReg(ProfileRegister)
-                                   .addOperand(RawAddressPageMCO));
-  // add    <ProfileRegister>, <ProfileRegister>, <RawProfileSymbolPageOffset>
-  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::ADDXri)
-                                   .addReg(ProfileRegister)
-                                   .addReg(ProfileRegister)
-                                   .addOperand(RawAddressPageOffsetMCO)
-                                   .addImm(0));
-  // bl     <HelperSymbol>
+
+  // blr x16
   EmitToStreamer(*OutStreamer,
-                 MCInstBuilder(AArch64::BL).addOperand(HelperSymbolMCO));
+                 MCInstBuilder(AArch64::BLR).addReg(AArch64::X16));
+
+  // ldp x29, x30, sp, #16
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::LDPXpost)
+                                   .addReg(AArch64::SP)
+                                   .addReg(AArch64::FP)
+                                   .addReg(AArch64::LR)
+                                   .addReg(AArch64::SP)
+                                   .addImm(2));
+  // ldr X1, sp, #16
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::LDRXpost)
+                                   .addReg(AArch64::SP)
+                                   .addReg(AArch64::X1)
+                                   .addReg(AArch64::SP)
+                                   .addImm(16));
+  // ldp X0, X8, sp, #16
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::LDPXpost)
+                                   .addReg(AArch64::SP)
+                                   .addReg(AArch64::X0)
+                                   .addReg(AArch64::X8)
+                                   .addReg(AArch64::SP)
+                                   .addImm(2));
+}
+
+void AArch64AsmPrinter::LowerMIP_BASIC_BLOCK_INSTRUMENTATION(
+    const MachineInstr &MI) {
+  return;
 }
 
 void AArch64AsmPrinter::LowerMIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION(
     const MachineInstr &MI) {
+  // Used to store an offset from the beginning of the function
   MIPEmitter.runOnBasicBlockInstrumentationMarker(MI);
 
-  auto *RawProfileSymbol = MIPEmitter.getRawProfileSymbol(*MI.getMF());
-  auto TempRegister = MI.getOperand(0).getReg();
-  auto BlockID = MI.getOperand(1).getImm();
-  auto Offset = MIPEmitter.getOffsetToRawBlockProfileSymbol(BlockID);
-  bool ShouldSpillRegister = TempRegister == AArch64::NoRegister;
-
-  auto RawAddressPageMO =
-      MachineOperand::CreateMCSymbol(RawProfileSymbol, AArch64II::MO_PAGE);
-  auto RawAddressPageOffsetMO = MachineOperand::CreateMCSymbol(
-      RawProfileSymbol, AArch64II::MO_PAGEOFF | AArch64II::MO_NC);
-  MCOperand RawAddressPageMCO, RawAddressPageOffsetMCO;
-  lowerOperand(RawAddressPageMO, RawAddressPageMCO);
-  lowerOperand(RawAddressPageOffsetMO, RawAddressPageOffsetMCO);
-
-  OutStreamer->AddComment("MIP: Block Coverage");
-  // TODO: There is still some oportunity for optimization here. If there is a
-  //       register that is dead for the whole function, we can use it to store
-  //       the raw profile address at the beginning of the function. Then for
-  //       each block we use one `strb` instruction with an offset if the offset
-  //       is less than 4096.
-  if (ShouldSpillRegister) {
-    TempRegister = AArch64::X16;
-    // Spill the temporary register.
-    // str    <TempRegister>, [sp, #-16]!
-    EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::STRXpre)
-                                     .addReg(AArch64::SP)
-                                     .addReg(TempRegister)
-                                     .addReg(AArch64::SP)
-                                     .addImm(-16));
-  }
-  // adrp   <TempRegister>, <RawProfileSymbolPage>
-  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::ADRP)
-                                   .addReg(TempRegister)
-                                   .addOperand(RawAddressPageMCO));
-  // add    <TempRegister>, <TempRegister>, <Offset>
-  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::ADDXri)
-                                   .addReg(TempRegister)
-                                   .addReg(TempRegister)
-                                   .addImm(Offset)
-                                   .addImm(0));
-  // strb   wzr, [<TempRegister>, <RawProfileSymbolPageOffset>]
-  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::STRBBui)
-                                   .addReg(AArch64::WZR)
-                                   .addReg(TempRegister)
-                                   .addOperand(RawAddressPageOffsetMCO));
-  if (ShouldSpillRegister) {
-    // Restore the temporary register.
-    // ldr    <TempRegister>, [sp], #16
-    EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::LDRXpost)
-                                     .addReg(AArch64::SP)
-                                     .addReg(TempRegister)
-                                     .addReg(AArch64::SP)
-                                     .addImm(16));
-  }
+  // An Machine Instruction needs to be lowered into some assembly instruction
+  // noop instruction as a placeholder to allow for successful compilation
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::B).addImm(1));
+  return;
 }
 
 void AArch64AsmPrinter::LowerPATCHABLE_FUNCTION_ENTER(const MachineInstr &MI)
@@ -1733,6 +1782,9 @@ void AArch64AsmPrinter::emitInstruction(const MachineInstr *MI) {
 
   case TargetOpcode::MIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION:
     return LowerMIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION(*MI);
+
+  case TargetOpcode::MIP_BASIC_BLOCK_INSTRUMENTATION:
+    return LowerMIP_BASIC_BLOCK_INSTRUMENTATION(*MI);
 
   case TargetOpcode::PATCHPOINT:
     return LowerPATCHPOINT(*OutStreamer, SM, *MI);

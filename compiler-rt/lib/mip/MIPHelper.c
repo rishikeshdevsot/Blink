@@ -93,6 +93,15 @@ __llvm_mip_call_counts_instrumentation_helper(ProfileData_t *ProfileData) {
   return ProfileData;
 }
 
+void *__custom_instrumentation(int *CallCount) {
+  asm volatile("str x8, [sp, #-16]!");
+  *CallCount = *CallCount + 1;
+  asm volatile("ldr x8, [sp], #16");
+  return NULL;
+}
+
+void *__custom_instrumentation_exit(int *CallCount) { return NULL; }
+
 #ifdef __linux__
 #define MIP_RAW_SECTION_BEGIN_SYMBOL MIP_CONCAT(__start_, MIP_RAW_SECTION)
 #define MIP_RAW_SECTION_END_SYMBOL MIP_CONCAT(__stop_, MIP_RAW_SECTION)

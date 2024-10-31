@@ -115,6 +115,12 @@ SymReader::getDIInliningInfo(int64_t MIPRawOffset) const {
   return Symbolizer->symbolizeInlinedCode(SymbolFilePath, Addr);
 }
 
+Expected<DILineInfo> SymReader::getDIInfo(int64_t MIPRawOffset) const {
+  auto Addr = object::SectionedAddress{MIPRawSectionBeginAddress + MIPRawOffset,
+                                       object::SectionedAddress::UndefSection};
+  return Symbolizer->symbolizeCode(SymbolFilePath, Addr);
+}
+
 ErrorOr<std::unique_ptr<SymReader>>
 SymReader::create(const Twine &InputPath, const StringRef Arch, bool Demangle) {
   auto ObjsOrErr = expandBundle(InputPath.str());

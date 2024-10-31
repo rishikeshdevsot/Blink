@@ -152,7 +152,7 @@ MFProfile MIPReader::readNextProfile(const char *&Data) {
   Profile.FunctionSize = endian::readNext<uint32_t, little, unaligned>(Data);
   Profile.ControlFlowGraphSignature =
       endian::readNext<uint32_t, little, unaligned>(Data);
-  uint32_t NonEntryBasicBlockCount =
+  uint32_t ExitBasicBlockCount =
       endian::readNext<uint32_t, little, unaligned>(Data);
   Profile.RawProfileCount = endian::readNext<uint32_t, little, unaligned>(Data);
   Profile.FunctionCallCount =
@@ -163,13 +163,13 @@ MFProfile MIPReader::readNextProfile(const char *&Data) {
   // NOTE: The file format does not include the entry basic block in the block
   //       profile list.
   MBBProfile EntryBlockProfile(0);
-  EntryBlockProfile.IsCovered =
-      Profile.FunctionCallCount > 0 || Profile.RawProfileCount > 0;
+  EntryBlockProfile.BlockCount = Profile.FunctionCallCount;
   Profile.BasicBlockProfiles.push_back(EntryBlockProfile);
-  for (uint32_t j = 0; j < NonEntryBasicBlockCount; j++) {
+  for (uint32_t j = 0; j < ExitBasicBlockCount; j++) {
     MBBProfile BlockProfile;
     BlockProfile.Offset = endian::readNext<uint32_t, little, unaligned>(Data);
-    BlockProfile.IsCovered = endian::readNext<bool, little, unaligned>(Data);
+    BlockProfile.BlockCount =
+        endian::readNext<uint32_t, little, unaligned>(Data);
     Profile.BasicBlockProfiles.push_back(BlockProfile);
   }
 
@@ -235,12 +235,12 @@ MIPMapReader::readNextProfile(const char *&Data, uint64_t CurrentOffset,
   Profile->FunctionSize = endian::readNext<uint32_t, little, unaligned>(Data);
   Profile->ControlFlowGraphSignature =
       endian::readNext<uint32_t, little, unaligned>(Data);
-  uint32_t NonEntryBasicBlockCount =
+  uint32_t ExitBasicBlockCount =
       endian::readNext<uint32_t, little, unaligned>(Data);
 
   // Create the entry block profile.
   Profile->BasicBlockProfiles.push_back(MBBProfile());
-  for (size_t i = 0; i < NonEntryBasicBlockCount; i++) {
+  for (size_t i = 0; i < ExitBasicBlockCount; i++) {
     auto Offset = endian::readNext<uint32_t, little, unaligned>(Data);
     Profile->BasicBlockProfiles.push_back(MBBProfile(Offset));
   }
@@ -312,15 +312,7 @@ std::error_code MIPRawReader::readData(std::unique_ptr<MemoryBuffer> &Buffer,
           endian::readNext<uint32_t, little, unaligned>(Data);
       uint32_t FunctionTimestamp =
           endian::readNext<uint32_t, little, unaligned>(Data);
-      if ((FunctionCallCount == 0xFFFFFFFF) !=
-          (FunctionTimestamp == 0xFFFFFFFF)) {
-        WithColor::error() << "Corrupt raw profile near offset 0x"
-                           << Twine::utohexstr(
-                                  (uint64_t)(Data - Buffer->getBufferStart()))
-                           << "\n";
-        return std::make_error_code(std::errc::invalid_argument);
-      }
-      if (FunctionCallCount != 0xFFFFFFFF) {
+      if (FunctionCallCount != 0x00000000) {
         RawProfile.FunctionCallCount = FunctionCallCount;
         RawProfile.FunctionTimestamp = FunctionTimestamp;
       }
@@ -329,11 +321,10 @@ std::error_code MIPRawReader::readData(std::unique_ptr<MemoryBuffer> &Buffer,
 
     if (RawMIP->Header.ProfileType & MIP_PROFILE_TYPE_BLOCK_COVERAGE) {
       // NOTE: The entry basic block profile is not in the raw file format.
-      RawProfile.BasicBlockCoverage.push_back(RawProfile.IsFunctionCovered);
+      RawProfile.BasicBlockExecCount.push_back(RawProfile.FunctionCallCount);
       for (size_t i = 1; i < Profile.BasicBlockProfiles.size(); i++) {
-        bool IsBlockCovered =
-            (endian::readNext<uint8_t, little, unaligned>(Data) == 0x00);
-        RawProfile.BasicBlockCoverage.push_back(IsBlockCovered);
+        auto BlockCount = endian::readNext<uint32_t, little, unaligned>(Data);
+        RawProfile.BasicBlockExecCount.push_back(BlockCount);
       }
     }
 

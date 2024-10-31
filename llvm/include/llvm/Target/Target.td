@@ -1091,13 +1091,19 @@ def MIP_FUNCTION_COVERAGE_INSTRUMENTATION : StandardPseudoInstruction {
 }
 def MIP_INSTRUMENTATION : StandardPseudoInstruction {
   let OutOperandList = (outs);
-  let InOperandList = (ins unknown:$reg, unknown:$helper);
+  let InOperandList = (ins unknown:$reg, unknown:$helper, i32imm:$atomic, i32imm:$flag, i32imm:$mode);
   let AsmString = "";
   let hasSideEffects = 1;
 }
 def MIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION : StandardPseudoInstruction {
   let OutOperandList = (outs);
   let InOperandList = (ins unknown:$reg, i32imm:$n);
+  let AsmString = "";
+  let hasSideEffects = 1;
+}
+def MIP_BASIC_BLOCK_INSTRUMENTATION : StandardPseudoInstruction {
+  let OutOperandList = (outs);
+  let InOperandList = (ins unknown:$reg, i32imm:$n, i32imm:$atomic);
   let AsmString = "";
   let hasSideEffects = 1;
 }

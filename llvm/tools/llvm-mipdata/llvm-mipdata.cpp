@@ -166,12 +166,12 @@ std::error_code mergeMain() {
       }
 
       if (RawHeader.ProfileType & MIP_PROFILE_TYPE_BLOCK_COVERAGE) {
-        assert(RawProfile.BasicBlockCoverage.size() ==
+        assert(RawProfile.BasicBlockExecCount.size() ==
                Profile.BasicBlockProfiles.size());
         for (unsigned BlockID = 0;
-             BlockID < RawProfile.BasicBlockCoverage.size(); BlockID++) {
-          Profile.BasicBlockProfiles[BlockID].IsCovered |=
-              RawProfile.BasicBlockCoverage[BlockID];
+             BlockID < RawProfile.BasicBlockExecCount.size(); BlockID++) {
+          Profile.BasicBlockProfiles[BlockID].BlockCount +=
+              RawProfile.BasicBlockExecCount[BlockID];
         }
       }
     }
@@ -216,35 +216,48 @@ std::error_code showMain() {
 
     DILineInfo SourceInfo;
     if (SymReader) {
-      auto InliningInfo =
-          SymReader->getDIInliningInfo(Profile.EncodedFunctionAddress);
-      if (InliningInfo && InliningInfo.get().getNumberOfFrames())
-        SourceInfo = InliningInfo.get().getFrame(0);
+      auto SourceInfoOrErr =
+          SymReader->getDIInfo(Profile.EncodedFunctionAddress);
+      if (auto err = SourceInfoOrErr.takeError()) {
+        OS << "No source info " << toString(std::move(err)) << "\n";
+      } else {
+        SourceInfo = SourceInfoOrErr.get();
+      }
     }
 
     OS << Profile.FunctionName << "\n";
     if (SourceInfo)
       OS << "  Source Info: " << SourceInfo.FileName << ":" << SourceInfo.Line
-         << "\n";
+         << " " << "Function Name: " << SourceInfo.FunctionName << "\n";
     OS << "  Call Count: " << Profile.FunctionCallCount << "\n";
+    // Function Order Sum will not be updated for OHOS, so not printing it.
+#ifndef __OHOS__
     if (Profile.FunctionOrderSum)
       OS << "  Order Sum: " << Profile.FunctionOrderSum << "\n";
+#endif
     if (Profile.BasicBlockProfiles.size() > 1) {
-      OS << "  Block Coverage:";
+      OS << "  Block Counts: ";
       for (unsigned I = 0; I < Profile.BasicBlockProfiles.size(); I++) {
         const auto &BlockProfile = Profile.BasicBlockProfiles[I];
-        if (I % 8 == 0) {
-          OS << "\n    ";
+        OS << "\n    ";
+        OS << "Count: " << BlockProfile.BlockCount;
+
+        if (!SymReader)
+          continue;
+        DILineInfo BBSourceInfo;
+        auto BBSourceInfoOrErr = SymReader->getDIInfo(
+            Profile.EncodedFunctionAddress + BlockProfile.Offset);
+        if (auto err = BBSourceInfoOrErr.takeError()) {
+          OS << "No source info " << toString(std::move(err));
+          continue;
         }
-        if (BlockProfile.IsCovered) {
-          WithColor(OS, raw_ostream::RED) << " HOT ";
-        } else {
-          WithColor(OS, raw_ostream::CYAN) << " COLD";
-        }
+        BBSourceInfo = BBSourceInfoOrErr.get();
+        if (BBSourceInfo)
+          OS << " Source Info: (" << BBSourceInfo.FunctionName << ": "
+             << BBSourceInfo.Line << ") ";
       }
-      OS << "\n";
     }
-    OS << "\n";
+    OS << "\n\n\n";
   }
 
   return std::error_code();
@@ -418,7 +431,7 @@ std::error_code infoMain() {
     TotalBlocks += Profile.BasicBlockProfiles.size();
     CoveredBlocks += std::count_if(
         Profile.BasicBlockProfiles.begin(), Profile.BasicBlockProfiles.end(),
-        [](const auto &BlockProfile) { return BlockProfile.IsCovered; });
+        [](const auto &BlockProfile) { return (BlockProfile.BlockCount > 0); });
     TotalCallEdges += Profile.CallEdges.size();
   }
 

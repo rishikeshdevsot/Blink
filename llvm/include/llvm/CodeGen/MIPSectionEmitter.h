@@ -38,7 +38,7 @@ public:
 
 private:
   struct MBBInfo {
-    const MCSymbol *StartSymbol;
+    MCSymbol *StartSymbol;
   };
 
   struct MFInfo {
@@ -47,14 +47,14 @@ private:
     const MCSymbol *EndSymbol;
     MCSymbol *RawProfileSymbol;
     uint32_t ControlFlowGraphSignature;
-    uint32_t NonEntryBasicBlockCount;
+    uint32_t ExitBasicBlockCount;
 
     // A map from Machine Basic Block IDs to MBBInfo.
     DenseMap<uint32_t, MBBInfo> BasicBlockInfos;
   };
 
   void emitMIPHeader(MachineProfile::MIPFileType FileType);
-  void emitMIPFunctionData(const MFInfo &Info);
+  void emitMIPFunctionData(MFInfo &Info);
   void emitMIPFunctionInfo(MFInfo &Info);
   MCSymbol *getMIPSectionBeginSymbol(Twine MIPSectionName);
   void emitLinkageAndVisibility(MCSymbol *Sym);

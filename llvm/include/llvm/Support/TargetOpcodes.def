@@ -54,6 +54,12 @@ HANDLE_TARGET_OPCODE(MIP_INSTRUMENTATION)
 /// if one exists and the id of the instrumented block.
 HANDLE_TARGET_OPCODE(MIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION)
 
+/// MIP_BASIC_BLOCK_INSTRUMENTATION - This instruction implements basic
+/// block instrumentation. It takes as input a free temporary register
+/// if one exists, the id of the instrumented block and a flag to specify atomic
+/// instrumentation
+HANDLE_TARGET_OPCODE(MIP_BASIC_BLOCK_INSTRUMENTATION)
+
 /// KILL - This instruction is a noop that is used only to adjust the
 /// liveness of registers. This can be useful when dealing with
 /// sub-registers.

@@ -69,7 +69,7 @@ void MIPWriter::write(const std::vector<MFProfile> &Profiles, uint16_t Version,
          it != Profile.BasicBlockProfiles.end(); it++) {
       const auto &BlockProfile = *it;
       Writer.write(BlockProfile.Offset);
-      Writer.write(BlockProfile.IsCovered);
+      Writer.write(BlockProfile.BlockCount);
     }
 
     Writer.write<uint32_t>(Profile.CallEdges.size());

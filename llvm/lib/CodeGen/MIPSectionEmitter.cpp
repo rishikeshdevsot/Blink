@@ -92,7 +92,7 @@ void MIPSectionEmitter::runOnFunctionInstrumentationMarker(
   Info.RawProfileSymbol =
       OutContext.getOrCreateSymbol(getMangledName(Info.Func) + "$RAW");
   Info.ControlFlowGraphSignature = MI.getOperand(0).getImm();
-  Info.NonEntryBasicBlockCount = MI.getOperand(1).getImm();
+  Info.ExitBasicBlockCount = MI.getOperand(1).getImm();
 
   FunctionInfos.insert(std::make_pair(Info.StartSymbol, Info));
 }
@@ -100,13 +100,18 @@ void MIPSectionEmitter::runOnFunctionInstrumentationMarker(
 void MIPSectionEmitter::runOnBasicBlockInstrumentationMarker(
     const MachineInstr &MI) {
   assert(MI.getOpcode() ==
-         TargetOpcode::MIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION);
+             TargetOpcode::MIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION ||
+         MI.getOpcode() == TargetOpcode::MIP_BASIC_BLOCK_INSTRUMENTATION);
   // TODO: Properly lookup the correct function info instead of just looking at
   //       the function we are currently in.
+  auto &OS = *AP.OutStreamer;
+  auto &OutContext = OS.getContext();
+
   const auto &F = MI.getMF()->getFunction();
   auto BlockID = MI.getOperand(1).getImm();
   MBBInfo Info;
-  Info.StartSymbol = MI.getParent()->getSymbol();
+  Info.StartSymbol = OutContext.createTempSymbol("mip_exit_instrumentation");
+  OS.emitLabel(Info.StartSymbol);
   auto *FunctionSymbol = AP.TM.getSymbol(&F);
   auto &FunctionInfo = FunctionInfos[FunctionSymbol];
   FunctionInfo.BasicBlockInfos.insert(std::make_pair(BlockID, Info));
@@ -121,11 +126,12 @@ MCSymbol *MIPSectionEmitter::getRawProfileSymbol(const MachineFunction &MF) {
 }
 
 uint64_t MIPSectionEmitter::getOffsetToRawBlockProfileSymbol(uint32_t BlockID) {
-  assert(MIRInstrumentation::EnableMachineBasicBlockCoverage);
+  assert(MIRInstrumentation::EnableMachineBasicBlockInstrumentation ||
+         MIRInstrumentation::EnableMachineBasicBlockCoverage);
   if (MIRInstrumentation::EnableMachineFunctionCoverage)
-    return 1 + BlockID;
+    return 1 + (BlockID * 4);
   if (MIRInstrumentation::EnableMachineCallGraph)
-    return 8 + BlockID;
+    return 8 + (BlockID * 4); // 8 bytes for call counter and timestamp
   llvm_unreachable("Expected function coverage or call graph instrumentation.");
 }
 
@@ -165,7 +171,8 @@ void MIPSectionEmitter::emitMIPHeader(MIPFileType FileType) {
     llvm_unreachable(
         "Expected function coverage or call graph instrumentation.");
   }
-  if (MIRInstrumentation::EnableMachineBasicBlockCoverage)
+  if (MIRInstrumentation::EnableMachineBasicBlockCoverage ||
+      MIRInstrumentation::EnableMachineBasicBlockInstrumentation)
     ProfileType |= MIP_PROFILE_TYPE_BLOCK_COVERAGE;
   OS.AddComment("Profile Type");
   OS.emitIntValueInHex(ProfileType, 4);
@@ -194,7 +201,7 @@ void MIPSectionEmitter::emitMIPHeader(MIPFileType FileType) {
   OS.AddBlankLine();
 }
 
-void MIPSectionEmitter::emitMIPFunctionData(const MFInfo &Info) {
+void MIPSectionEmitter::emitMIPFunctionData(MFInfo &Info) {
   auto &OS = *AP.OutStreamer;
   auto &OutContext = OS.getContext();
   const auto &TT = OutContext.getTargetTriple();
@@ -227,18 +234,59 @@ void MIPSectionEmitter::emitMIPFunctionData(const MFInfo &Info) {
 
     OS.emitIntValueInHex(0xFF, 1);
   } else if (MIRInstrumentation::EnableMachineCallGraph) {
-    OS.emitValueToAlignment(4);
+    // Align output to cache align accesses
+    OS.emitValueToAlignment(64);
     OS.emitLabel(Info.RawProfileSymbol);
 
+    // Use a reference symbol to encode the function PC offset.
+    auto *ReferenceLabel = OutContext.createTempSymbol("ref");
+    OS.emitLabel(ReferenceLabel);
+
+    // Invocation counter for the function
+    OS.emitIntValueInHex(0x00000000, 4);
+
+    // The following is used for printing a Function Order Sum/timestamp
     OS.emitIntValueInHex(0xFFFFFFFF, 4);
-    OS.emitIntValueInHex(0xFFFFFFFF, 4);
+
+    // Value to store the function address
+    OS.AddComment("Function PC Offset");
+    OS.emitValue(MCBinaryExpr::createSub(
+                     MCSymbolRefExpr::create(Info.StartSymbol, OutContext),
+                     MCSymbolRefExpr::create(ReferenceLabel, OutContext),
+                     OutContext),
+                 TT.isArch64Bit() ? 8 : 4);
+
+    // Emit flag to enable or disable instrumentation
+    // Default is disabled
+    OS.emitIntValueInHex(0x00000001, 4);
+
+    // Emit number of exit basic blocks
+    OS.emitIntValueInHex(Info.ExitBasicBlockCount, 4);
+
+    // Value to store the rewrite addresses
+    for (uint64_t BlockID = 0; BlockID < Info.ExitBasicBlockCount; BlockID++) {
+      if (Info.BasicBlockInfos.count(BlockID)) {
+        const MBBInfo &BasicBlockInfo = Info.BasicBlockInfos[BlockID];
+        OS.AddComment("Block " + Twine(BlockID) + " Offset");
+        OS.emitAbsoluteSymbolDiff(BasicBlockInfo.StartSymbol, Info.StartSymbol,
+                                  4);
+      } else {
+        OS.emitZeros(4);
+      }
+    }
   } else {
     llvm_unreachable(
         "Expected function coverage or call graph instrumentation.");
   }
 
-  if (MIRInstrumentation::EnableMachineBasicBlockCoverage) {
-    OS.emitFill(Info.NonEntryBasicBlockCount, 0xFF);
+  // Align each row to the cache line size (64 bytes) to avoid false sharing:
+  //
+  // 4 bytes (Invocation Counter) + 4 bytes (Function Order Sum) +
+  // 8 bytes (Function Address) + 4 bytes (flag to toggle tracing) +
+  // 4 bytes (number of exit basic blocks) = 24 bytes
+  //
+  if (((Info.ExitBasicBlockCount * 4 + 24) % 64) > 0) {
+    OS.emitFill(64 - ((Info.ExitBasicBlockCount * 4 + 24) % 64), 0xFF);
   }
 
   OS.AddBlankLine();
@@ -308,10 +356,9 @@ void MIPSectionEmitter::emitMIPFunctionInfo(MFInfo &Info) {
   OS.emitIntValueInHex(Info.ControlFlowGraphSignature, 4);
 
   OS.AddComment("Non-entry Block Count");
-  OS.emitIntValue(Info.NonEntryBasicBlockCount, 4);
+  OS.emitIntValue(Info.ExitBasicBlockCount, 4);
 
-  for (uint64_t BlockID = 0; BlockID < Info.NonEntryBasicBlockCount;
-       BlockID++) {
+  for (uint64_t BlockID = 0; BlockID < Info.ExitBasicBlockCount; BlockID++) {
     if (Info.BasicBlockInfos.count(BlockID)) {
       const auto &MBBInfo = Info.BasicBlockInfos[BlockID];
       OS.AddComment("Block " + Twine(BlockID) + " Offset");

@@ -112,10 +112,15 @@ unsigned AArch64InstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
     NumBytes = 8;
     break;
   case TargetOpcode::MIP_INSTRUMENTATION:
-    NumBytes = 16;
+    NumBytes = 56;
     break;
   case TargetOpcode::MIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION:
-    NumBytes = (MI.getOperand(0).getReg() == AArch64::NoRegister) ? 20 : 12;
+    NumBytes = 8;
+    break;
+  case TargetOpcode::MIP_BASIC_BLOCK_INSTRUMENTATION:
+    // 4 additional bytes to the previous case to account for the immediate
+    // value describing atomic or not.
+    NumBytes = (MI.getOperand(0).getReg() == AArch64::NoRegister) ? 24 : 16;
     break;
   case TargetOpcode::STACKMAP:
     // The upper bound for a stackmap intrinsic is the full length of its shadow
@@ -7557,6 +7562,7 @@ AArch64InstrInfo::getOutliningType(MachineBasicBlock::iterator &MIT,
   case TargetOpcode::MIP_FUNCTION_INSTRUMENTATION_MARKER:
   case TargetOpcode::MIP_FUNCTION_COVERAGE_INSTRUMENTATION:
   case TargetOpcode::MIP_INSTRUMENTATION:
+  case TargetOpcode::MIP_BASIC_BLOCK_INSTRUMENTATION:
   case TargetOpcode::MIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION:
     return outliner::InstrType::Illegal;
   }

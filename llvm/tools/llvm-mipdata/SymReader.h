@@ -40,6 +40,8 @@ public:
   create(const Twine &Filename, const StringRef Arch, bool Demangle = true);
 
   Expected<DIInliningInfo> getDIInliningInfo(int64_t MIPRawOffset) const;
+
+  Expected<DILineInfo> getDIInfo(int64_t MIPRawOffset) const;
 };
 
 } // namespace MachineProfile
