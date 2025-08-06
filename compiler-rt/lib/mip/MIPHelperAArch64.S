@@ -56,4 +56,37 @@ ASM_SYMBOL(__llvm_mip_call_counts_caller):
     CFI_ENDPROC
     ASM_SIZE(__llvm_mip_call_counts_caller)
 
+
+// Call the C instrumentation helper for dumping the data array
+    .global ASM_SYMBOL(dump_data_array_helper)
+    ASM_TYPE_FUNCTION(ASM_SYMBOL(dump_data_array_helper))
+ASM_SYMBOL(dump_data_array_helper):
+    CFI_STARTPROC
+    SAVE_STACK_FRAME
+    bl      ASM_SYMBOL(dump_data_array)
+
+    RESTORE_STACK_FRAME
+    // Restore x29, x30 and return to the caller as if we were never called.
+    mov     x16, x30
+    ldp     x29, x30, [sp], #0x10
+    ret     x16
+    CFI_ENDPROC
+    ASM_SIZE(dump_data_array_helper)
+
+// Call the C instrumentation helper for dumping the data array
+    .global ASM_SYMBOL(init_perf_util_helper)
+    ASM_TYPE_FUNCTION(ASM_SYMBOL(init_perf_util_helper))
+ASM_SYMBOL(init_perf_util_helper):
+    CFI_STARTPROC
+    SAVE_STACK_FRAME
+    bl      ASM_SYMBOL(init_perf_util)
+
+    RESTORE_STACK_FRAME
+    // Restore x29, x30 and return to the caller as if we were never called.
+    mov     x16, x30
+    ldp     x29, x30, [sp], #0x10
+    ret     x16
+    CFI_ENDPROC
+    ASM_SIZE(init_perf_util_helper)
+
 #endif // defined(__aarch64__) || defined(__arm64__)
