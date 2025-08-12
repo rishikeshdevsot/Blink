@@ -21,8 +21,226 @@ uint32_t enable_global = 0;
 // Signal Handler for SIGUSR2
 void dumpProfileOnSignal(int signal) { __llvm_dump_mip_profile(); }
 
+BlinkConfigs configs = {
+    // clang-format off
+    .total_sample_count = 0,
+    .pervasive          = false,
+    .max_samples        = 0,          // No global cap by default (pervasive
+                                      // mode enabled unless --max-sample is
+                                      // specified)
+    .nsamples           = 10 * 2,     // Default: disable tracing after 10
+                                      // samples per function
+    .sampling_interval  = 400 * 1000, // Default: re-enable tracing after 400ms
+    .buffer_size        = 10000,      // Default buffer size: 10,000 samples
+                                      // per thread
+    .PMU_event          = 0,          // Default PMU event
+                                      // (e.g. PERF_COUNT_HW_CPU_CYCLES)
+    .PMU_index          = 5,
+    .output_dir         = "/data/local/tmp", // Default output location
+    .lib                = "",         // Must be set explicitly for dynamic mode
+    .mode               = true        // Default is dynamic mode
+    // clang-format on
+};
+
+void DumpBlinkConfigs(const char *path, const BlinkConfigs *c) {
+  FILE *f = fopen(path, "w");
+  if (!f) {
+    fprintf(stderr, "Failed to open %s for writing: %s\n", path,
+            strerror(errno));
+    return;
+  }
+  fprintf(f,
+          "output_dir          = %s\n"
+          "lib                 = %s\n"
+          "total_sample_count  = %lu\n"
+          "max_samples         = %lu\n"
+          "nsamples            = %lu\n"
+          "sampling_interval   = %lu\n"
+          "buffer_size         = %lu\n"
+          "PMU_event           = %lu\n"
+          "PMU_index           = %lu\n"
+          "pervasive           = %d\n"
+          "mode                = %d\n",
+          c->output_dir, c->lib, c->total_sample_count, c->max_samples,
+          c->nsamples, c->sampling_interval, c->buffer_size, c->PMU_event,
+          c->PMU_index, c->pervasive, c->mode);
+  fclose(f);
+}
+
+void LoadAndDumpBlinkConfigs(void) {
+  const char *in_path = "/data/storage/el1/base/blink_configs.txt";
+  const char *out_path = "/data/storage/el1/base/blink_configs_run.txt";
+  FILE *in = fopen(in_path, "r");
+  if (in) {
+    char line[256];
+    while (fgets(line, sizeof(line), in)) {
+      // Trim leading whitespace
+      char *p = line;
+      while (*p == ' ' || *p == '\t')
+        p++;
+
+      // 1) output_dir is a string
+      if (strncmp(p, "output_dir", 10) == 0) {
+        char dirval[256];
+        if (sscanf(p, "output_dir = %255s", dirval) == 1) {
+          strncpy(configs.output_dir, dirval, sizeof(configs.output_dir) - 1);
+          configs.output_dir[sizeof(configs.output_dir) - 1] = '\0';
+        }
+      } else if (strncmp(p, "lib", 3) == 0) {
+        char libval[256];
+        if (sscanf(p, "lib = %255s", libval) == 1) {
+          strncpy(configs.lib, libval, sizeof(configs.lib) - 1);
+          configs.lib[sizeof(configs.lib) - 1] = '\0';
+        }
+      }
+      // 2) the rest are unsigned values
+      else {
+        char key[64];
+        unsigned long val;
+        if (sscanf(p, "%63[^= ] = %lu", key, &val) == 2) {
+          if (strcmp(key, "PMU_index") == 0)
+            configs.PMU_index = val;
+          else if (strcmp(key, "max_samples") == 0)
+            configs.max_samples = val;
+          else if (strcmp(key, "nsamples") == 0)
+            configs.nsamples = val;
+          else if (strcmp(key, "sampling_interval") == 0)
+            configs.sampling_interval = val;
+          else if (strcmp(key, "buffer_size") == 0)
+            configs.buffer_size = val;
+          else if (strcmp(key, "PMU_event") == 0)
+            configs.PMU_event = val;
+          else if (strcmp(key, "pervasive") == 0)
+            configs.pervasive = (bool)val;
+          else if (strcmp(key, "mode") == 0)
+            configs.mode = (bool)val;
+        }
+      }
+    }
+    fclose(in);
+  }
+  // write out the runtime-used values
+  DumpBlinkConfigs(out_path, &configs);
+}
+
+// Created if mprotect call was succesful
+void CreateMprotectSuccessFile() {
+  int fd = open("/data/storage/el1/base/mprotect_success_new.txt",
+                O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd >= 0) {
+    close(fd);
+  }
+}
+
+// Created if mprotect was unsuccesful, contains err code of failure
+void CreateMprotectFailureWithInfo(const MProtectErrorInfo *errors, int count) {
+  int fd = open("/data/storage/el1/base/mprotect_failure.txt",
+                O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd < 0) {
+    return;
+  }
+
+  for (int i = 0; i < count; ++i) {
+    char buf[256];
+    int len = snprintf(buf, sizeof(buf),
+                       "errno[%d]=%d start=0x%lx end=0x%lx len=0x%lx\n", i,
+                       errors[i].errno_value, errors[i].start, errors[i].end,
+                       (unsigned long)errors[i].len);
+    write(fd, buf, len);
+  }
+
+  close(fd);
+}
+
+void EnableEntryInstrumentation(int64_t FunctionAddress,
+                                const ProfileData_t *ProfileData) {
+
+  int64_t RewriteAddress = FunctionAddress;
+  uintptr_t target_addr = (uintptr_t)RewriteAddress;
+
+  *((uint32_t *)target_addr) = 0xD503201F; // encoding for noop
+}
+
+void EnableExitInstrumentation(int64_t FunctionAddress,
+                               const ProfileData_t *ProfileData) {
+  uint32_t NumExitBlocks = ProfileData->NumExitBlocks;
+  if (NumExitBlocks == 0) {
+    return;
+  }
+  const uint32_t *ExitBlockOffsetArray = &(ProfileData->ExitBlockOffsetArray);
+  for (int i = 0; i < NumExitBlocks; i++) {
+    int64_t RewriteAddress = FunctionAddress + ExitBlockOffsetArray[i];
+
+    // Extra placehold instruction for exit instrumentation
+    // that should be skipped
+    RewriteAddress = RewriteAddress + 4;
+    uintptr_t target_addr = (uintptr_t)RewriteAddress;
+
+    *((uint32_t *)target_addr) = 0xD503201F; // encoding for noop
+  }
+}
+
+// Calculates the value to skip to the next row in the global table -- next
+// function
+static uint32_t CalculateSkipValueForNextFunction(uint32_t NumExitBlocks) {
+  // Each row is padded to a 64 byte boundary
+
+  // sizeof(ProfileData_t) - 4 corresponds to the space occupied by the struct
+  // minus the exit block address array NumExitBlocks*4 corresponds to the space
+  // occupied by the array storing addresses of exit blocks
+  uint32_t SkipValNextFunction =
+      64 * ((NumExitBlocks * 4 + sizeof(ProfileData_t) - 4) / 64);
+  if (((NumExitBlocks * 4 + sizeof(ProfileData_t) - 4) % 64) > 0)
+    SkipValNextFunction += 64;
+  return SkipValNextFunction;
+}
+
+void EnableAllInstrumentation() {
+  const void *MIPRawSection = __llvm_mip_profile_begin();
+  void *MIPDataIndexer =
+      (void *)((int64_t)MIPRawSection + 64); // Skip the 64 byte MIPHeader
+
+  // Iterate until the end of the MIP profile section
+  while (((int64_t)MIPDataIndexer) < ((int64_t)__llvm_mip_profile_end())) {
+
+    // 0x50494DFB is the magic number that the MIP header starts with
+    // Assumption: It's unlikely call count for a function will have this exact
+    // value
+    // TODO: Make this check more robust
+    if (*((int32_t *)MIPDataIndexer) == 0x50494DFB) {
+      MIPDataIndexer +=
+          64; // Skip any additional MIP headers present post linking
+      continue;
+    }
+
+    ProfileData_t *ProfileData = (ProfileData_t *)(MIPDataIndexer);
+    uint32_t SkipValNextFunction =
+        CalculateSkipValueForNextFunction(ProfileData->NumExitBlocks);
+    if (!ProfileData->DisabledFlag) {
+      MIPDataIndexer += SkipValNextFunction; // Move to the next function
+      continue;
+    }
+
+    int64_t FunctionAddress =
+        (int64_t)MIPDataIndexer + ProfileData->OffsetToFunction;
+
+    EnableEntryInstrumentation(FunctionAddress, ProfileData);
+    EnableExitInstrumentation(FunctionAddress, ProfileData);
+
+    // Reset invocation count
+    ProfileData->CallCount = 0;
+
+    ProfileData->DisabledFlag = 0;
+    MIPDataIndexer += SkipValNextFunction; // Move to the next function
+  }
+  asm volatile("isb");
+}
+
+void *ControlThreadFunction();
+
 void __llvm_mip_runtime_initialize(void) {
   struct sigaction DumpProfile;
+
   DumpProfile.sa_flags = 0;
   DumpProfile.sa_handler = &dumpProfileOnSignal;
   sigaction(SIGUSR2, &DumpProfile, NULL);
@@ -35,8 +253,85 @@ _Thread_local PMUStats stats = {.size = 0,
                                 .pmu_index = 5, // use pmevcntr5_el0 as default
                                 .init = 0};
 
+// Callback function call over all the loaded libaries by dl_iterate_phdr
+int RewriteCallback(struct dl_phdr_info *info, size_t size, void *data) {
+  const char *libname = (const char *)data;
+  long page_size = sysconf(_SC_PAGESIZE);
+
+  if (strstr(info->dlpi_name, libname)) {
+    ElfW(Addr) start = info->dlpi_addr;
+    ElfW(Addr) end = 0;
+
+    // Find the end address by iterating over all the segments
+    // Update the start address if not same as info->dlpi_addr
+    for (int i = 0; i < info->dlpi_phnum; i++) {
+      const ElfW(Phdr) *phdr = &info->dlpi_phdr[i];
+      if (phdr->p_type == PT_LOAD) {
+        ElfW(Addr) seg_start = info->dlpi_addr + phdr->p_vaddr;
+        ElfW(Addr) seg_end = seg_start + phdr->p_memsz;
+
+        if (seg_start < start)
+          start = seg_start;
+        if (seg_end > end)
+          end = seg_end;
+      }
+    }
+
+    // Page align the start and end
+    unsigned long AlignedStart = start & ~(page_size - 1);
+    unsigned long AlignedEnd = (end + page_size - 1) & ~(page_size - 1);
+    if (mprotect((void *)AlignedStart, AlignedEnd - AlignedStart,
+                 PROT_READ | PROT_WRITE | PROT_EXEC) == 0) {
+      CreateMprotectSuccessFile();
+    } else {
+      MProtectErrorInfo err;
+      err.errno_value = errno;
+      err.start = AlignedStart;
+      err.end = AlignedEnd;
+      err.len = AlignedEnd - AlignedStart;
+      CreateMprotectFailureWithInfo(&err, 1);
+    }
+
+    // Found library, stop iteration
+    return 1;
+  }
+  // Keep iterating
+  return 0;
+}
+
+// Returns true is successful, false if not
+bool MakeCodePagesWriteable() {
+  const char *target_lib = configs.lib;
+  if (strlen(target_lib) == 0) {
+    // if user fails to specify the rewriting library, we must not set the
+    // enable_global flag as it will cause a segfault.
+    return false;
+  }
+
+  dl_iterate_phdr(RewriteCallback, (void *)target_lib);
+  // TODO: What if user passes an erroneous library name?
+  return true;
+}
+
 void __llvm_dump_mip_profile(void) {
+  LoadAndDumpBlinkConfigs();
   InitPMUStats(&stats);
+  if (configs.mode) {
+    // do nothing if lib is not provided/supported in dynamic mode
+    if (!MakeCodePagesWriteable()) {
+      return;
+    } else {
+      // here we are in dynamic mode with a rewritable library, initiating
+      // control thread for turning the instrumentation on
+      pthread_t ControlThread;
+      pthread_create(&ControlThread, NULL, ControlThreadFunction, NULL);
+    }
+  } else {
+    // if we are in regular mode, always turn on the instrumentation without
+    // triggering any disabling mechanism
+    configs.pervasive = 1;
+  }
+
   enable_global = 1;
 
   configs.total_sample_count = 0;
@@ -89,6 +384,21 @@ __llvm_mip_call_counts_instrumentation_helper(ProfileData_t *ProfileData) {
     }
   }
   return ProfileData;
+}
+
+void *ControlThreadFunction() {
+  while (!enable_global) {
+    sleep(1);
+  }
+  while (enable_global) {
+    if (configs.max_samples &&
+        configs.total_sample_count >= configs.max_samples) {
+      return NULL;
+    }
+    EnableAllInstrumentation();
+    usleep(configs.sampling_interval);
+  }
+  return NULL;
 }
 
 // *NOTE*: The following functions are called using inlined assembly, be careful
@@ -245,32 +555,68 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
                  "add     sp,   sp,    #48\n\t");
   }
 
-  configs.total_sample_count++;
-  ProfileData->CallCount += 1;
+  if (!configs.pervasive &&
+      ((ProfileData->CallCount >= configs.nsamples) ||
+       (ProfileData->DisabledFlag) ||
+       (configs.max_samples &&
+        configs.total_sample_count >= configs.max_samples))) {
+    void *return_address;
+    asm volatile("mov %0, lr" : "=r"(return_address));
 
-  local_stats->data[local_stats->size].source_location = CodeLocationID;
+    uintptr_t target_addr = (uintptr_t)return_address - 44;
+    uint32_t *inst_ptr = (uint32_t *)target_addr;
+    // Self-disable instrumentation
+    *inst_ptr = 0x1400000E; // b +14 instructions
+    ProfileData->DisabledFlag = 1;
+    // asm volatile("isb");
+  } else {
 
-  // access PMU counter
-  int64_t value;
-  // 5 captures perf_event set-up after emperical experiment on realworkload
-  // asm volatile("isb");
-  asm volatile("mrs %0, pmevcntr5_el0" : "=r"(value));
-  // asm volatile("isb");
-  local_stats->data[local_stats->size++].pmu_value = value;
+    configs.total_sample_count++;
+    ProfileData->CallCount += 1;
 
-  if (local_stats->size >= configs.buffer_size) {
-    int size = local_stats->size;
-    // Reset
-    local_stats->size = 0;
-    // dump_data_array(stats.data, stats.size);
-    asm volatile("mov x0, %0\n\t"
-                 "mov x1, %1\n\t"
-                 "stp x29, x30, [sp, #-16]!\n\t"
-                 "bl dump_data_array_helper\n\t"
-                 :
-                 : "r"(local_stats->data), "r"(size)
-                 : "x0", "x1");
-    return NULL;
+    local_stats->data[local_stats->size].source_location = CodeLocationID;
+
+    // access PMU counter
+    int64_t value;
+    // 5 captures perf_event set-up after emperical experiment on realworkload
+    // asm volatile("isb");
+    switch (configs.PMU_index) {
+    case 0:
+      asm volatile("mrs %0, pmevcntr0_el0" : "=r"(value));
+      break;
+    case 1:
+      asm volatile("mrs %0, pmevcntr1_el0" : "=r"(value));
+      break;
+    case 2:
+      asm volatile("mrs %0, pmevcntr2_el0" : "=r"(value));
+      break;
+    case 3:
+      asm volatile("mrs %0, pmevcntr3_el0" : "=r"(value));
+      break;
+    case 4:
+      asm volatile("mrs %0, pmevcntr4_el0" : "=r"(value));
+      break;
+    case 5:
+      asm volatile("mrs %0, pmevcntr5_el0" : "=r"(value));
+      break;
+    }
+    // asm volatile("isb");
+    local_stats->data[local_stats->size++].pmu_value = value;
+
+    if (local_stats->size >= configs.buffer_size) {
+      int size = local_stats->size;
+      // Reset
+      local_stats->size = 0;
+      // dump_data_array(stats.data, stats.size);
+      asm volatile("mov x0, %0\n\t"
+                   "mov x1, %1\n\t"
+                   "stp x29, x30, [sp, #-16]!\n\t"
+                   "bl dump_data_array_helper\n\t"
+                   :
+                   : "r"(local_stats->data), "r"(size)
+                   : "x0", "x1");
+      return NULL;
+    }
   }
 
   return NULL;
@@ -288,10 +634,28 @@ void *__custom_instrumentation_exit(ProfileData_t *ProfileData,
   }
 
   int64_t value asm("x9");
-  ;
   // 5 captures perf_event set-up after emperical experiment on realworkload
   // asm volatile("isb");
-  asm volatile("mrs %0, pmevcntr5_el0" : "=r"(value));
+  switch (configs.PMU_index) {
+  case 0:
+    asm volatile("mrs %0, pmevcntr0_el0" : "=r"(value));
+    break;
+  case 1:
+    asm volatile("mrs %0, pmevcntr1_el0" : "=r"(value));
+    break;
+  case 2:
+    asm volatile("mrs %0, pmevcntr2_el0" : "=r"(value));
+    break;
+  case 3:
+    asm volatile("mrs %0, pmevcntr3_el0" : "=r"(value));
+    break;
+  case 4:
+    asm volatile("mrs %0, pmevcntr4_el0" : "=r"(value));
+    break;
+  case 5:
+    asm volatile("mrs %0, pmevcntr5_el0" : "=r"(value));
+    break;
+  }
   // asm volatile("isb");
 
   // hoist emutls by caching thread local pointer in a register
@@ -326,27 +690,43 @@ void *__custom_instrumentation_exit(ProfileData_t *ProfileData,
       :
       : "x0", "memory");
 
-  local_stats->data[local_stats->size].source_location = CodeLocationID;
+  if (!configs.pervasive &&
+      ((ProfileData->CallCount >= configs.nsamples) ||
+       (ProfileData->DisabledFlag) ||
+       (configs.max_samples &&
+        configs.total_sample_count >= configs.max_samples))) {
+    void *return_address;
+    asm volatile("mov %0, lr" : "=r"(return_address));
 
-  // access PMU counter
-  local_stats->data[local_stats->size++].pmu_value = value;
+    uintptr_t target_addr = (uintptr_t)return_address - 44;
+    uint32_t *inst_ptr = (uint32_t *)target_addr;
+    // Self-disable instrumentation
+    *inst_ptr = 0x1400000E; // b +14 instructions
+    ProfileData->DisabledFlag = 1;
+    // asm volatile("isb");
+  } else {
+    local_stats->data[local_stats->size].source_location = CodeLocationID;
 
-  configs.total_sample_count++;
-  ProfileData->CallCount += 1;
+    // access PMU counter
+    local_stats->data[local_stats->size++].pmu_value = value;
 
-  if (local_stats->size >= configs.buffer_size) {
-    int size = local_stats->size;
-    // Reset
-    local_stats->size = 0;
-    // dump_data_array(stats.data, stats.size);
-    asm volatile("mov x0, %0\n\t"
-                 "mov x1, %1\n\t"
-                 "stp x29, x30, [sp, #-16]!\n\t"
-                 "bl dump_data_array_helper\n\t"
-                 :
-                 : "r"(local_stats->data), "r"(size)
-                 : "x0", "x1");
-    return NULL;
+    configs.total_sample_count++;
+    ProfileData->CallCount += 1;
+
+    if (local_stats->size >= configs.buffer_size) {
+      int size = local_stats->size;
+      // Reset
+      local_stats->size = 0;
+      // dump_data_array(stats.data, stats.size);
+      asm volatile("mov x0, %0\n\t"
+                   "mov x1, %1\n\t"
+                   "stp x29, x30, [sp, #-16]!\n\t"
+                   "bl dump_data_array_helper\n\t"
+                   :
+                   : "r"(local_stats->data), "r"(size)
+                   : "x0", "x1");
+      return NULL;
+    }
   }
 
   return NULL;

@@ -39,14 +39,34 @@ void *__llvm_mip_profile_end(void);
 void __llvm_mip_runtime_initialize(void);
 
 typedef struct {
-  uint32_t CallCount;       // Function Invocation counter
-  uint32_t Timestamp;       // set to 0xffffffff
-  int64_t OffsetToFunction; // PC relative offset to the function address
-  uint32_t DisabledFlag;    // flag specifying if instrumentation is disabled
-  uint32_t NumExitBlocks;   // Number of exit blocks in function
-  uint32_t ExitBlockOffsetArray; // array containing offset from function entry
-                                 // to exit instrumentations
+  int errno_value;
+  unsigned long start;
+  unsigned long end;
+  size_t len;
+} MProtectErrorInfo;
+
+void CreateMprotectSuccessFile();
+void CreateMprotectFailureWithInfo(const MProtectErrorInfo *errors, int count);
+int RewriteCallback(struct dl_phdr_info *info, size_t size, void *data);
+bool MakeCodePagesWriteable();
+
+typedef struct {
+  uint32_t CallCount;
+  uint32_t Timestamp;
+  int64_t OffsetToFunction;
+  uint32_t DisabledFlag;
+  uint32_t NumExitBlocks;
+  uint32_t ExitBlockOffsetArray;
 } ProfileData_t;
+
+void EnableEntryInstrumentation(int64_t FunctionAddress,
+                                const ProfileData_t *ProfileData);
+void EnableExitInstrumentation(int64_t FunctionAddress,
+                               const ProfileData_t *ProfileData);
+void EnableAllInstrumentation();
+
+// main function executed by the control thread
+void *ControlThreadFunction();
 
 // Runtime Config used by Blink
 typedef struct {
@@ -64,31 +84,17 @@ typedef struct {
   uint64_t buffer_size;
   // PMU event ID to collect (matches Linux perf_event encoding)
   uint64_t PMU_event;
+  uint64_t PMU_index;
   // Directory to write the configuration file and flushed trace buffers
   char output_dir[256];
   // Name of the instrumented shared library (required in dynamic mode)
   char lib[256];
+  // If true, mode = dynamic, else mode = regular
+  bool mode;
 } BlinkConfigs;
 
-BlinkConfigs configs = {
-    // clang-format off
-    .total_sample_count = 0,
-    .pervasive          = false,
-    .max_samples        = 0,          // No global cap by default (pervasive
-                                      // mode enabled unless --max-sample is
-                                      // specified)
-    .nsamples           = 10 * 2,     // Default: disable tracing after 10
-                                      // samples per function
-    .sampling_interval  = 400 * 1000, // Default: re-enable tracing after 400ms
-    .buffer_size        = 10000,      // Default buffer size: 10,000 samples
-                                      // per thread
-    .PMU_event          = 0,          // Default PMU event
-                                      // (e.g. PERF_COUNT_HW_CPU_CYCLES)
-    .PMU_index          = 5,
-    .output_dir         = "/data/local/tmp", // Default output location
-    .lib                = "",         // Must be set explicitly for dynamic mode
-    // clang-format on
-};
+void DumpBlinkConfigs(const char *path, const BlinkConfigs *c);
+void LoadAndDumpBlinkConfigs(void);
 
 #define MAX_DATA_SIZE 10000
 typedef struct {

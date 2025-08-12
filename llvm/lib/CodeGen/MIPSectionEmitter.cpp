@@ -234,7 +234,7 @@ void MIPSectionEmitter::emitMIPFunctionData(MFInfo &Info) {
 
     OS.emitIntValueInHex(0xFF, 1);
   } else if (MIRInstrumentation::EnableMachineCallGraph) {
-    // Align output to cache align accesses
+    // Align output to cache aligned accesses (64-byte boundaries)
     OS.emitValueToAlignment(64);
     OS.emitLabel(Info.RawProfileSymbol);
 
@@ -277,16 +277,6 @@ void MIPSectionEmitter::emitMIPFunctionData(MFInfo &Info) {
   } else {
     llvm_unreachable(
         "Expected function coverage or call graph instrumentation.");
-  }
-
-  // Align each row to the cache line size (64 bytes) to avoid false sharing:
-  //
-  // 4 bytes (Invocation Counter) + 4 bytes (Function Order Sum) +
-  // 8 bytes (Function Address) + 4 bytes (flag to toggle tracing) +
-  // 4 bytes (number of exit basic blocks) = 24 bytes
-  //
-  if (((Info.ExitBasicBlockCount * 4 + 24) % 64) > 0) {
-    OS.emitFill(64 - ((Info.ExitBasicBlockCount * 4 + 24) % 64), 0xFF);
   }
 
   OS.AddBlankLine();
