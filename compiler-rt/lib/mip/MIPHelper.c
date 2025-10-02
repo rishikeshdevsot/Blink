@@ -101,6 +101,13 @@ extern char MIP_RAW_SECTION_END_SYMBOL __asm(
     "section$end$__DATA$" MIP_RAW_SECTION_NAME);
 #endif // __APPLE__
 
+#ifdef __OHOS__
+#define MIP_RAW_SECTION_BEGIN_SYMBOL MIP_CONCAT(__start_, MIP_RAW_SECTION)
+#define MIP_RAW_SECTION_END_SYMBOL MIP_CONCAT(__stop_, MIP_RAW_SECTION)
+extern char MIP_RAW_SECTION_BEGIN_SYMBOL;
+extern char MIP_RAW_SECTION_END_SYMBOL;
+#endif // __OHOS__
+
 void *__llvm_mip_profile_begin(void) { return &MIP_RAW_SECTION_BEGIN_SYMBOL; }
 
 void *__llvm_mip_profile_end(void) { return &MIP_RAW_SECTION_END_SYMBOL; }
