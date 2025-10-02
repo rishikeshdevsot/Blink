@@ -236,14 +236,17 @@ void EnableAllInstrumentation() {
   asm volatile("isb");
 }
 
-void *ControlThreadFunction();
-
 void __llvm_mip_runtime_initialize(void) {
   struct sigaction DumpProfile;
 
   DumpProfile.sa_flags = 0;
   DumpProfile.sa_handler = &dumpProfileOnSignal;
   sigaction(SIGUSR2, &DumpProfile, NULL);
+
+  // struct sigaction stopInstr;
+  // stopInstr.sa_flags = 0;
+  // stopInstr.sa_handler = &stopInstrumentation;
+  // sigaction(SIGUSR1, &stopInstr, NULL);
 }
 
 void InitPMUStats(PMUStats *stats) { stats->size = 0; }
@@ -251,7 +254,8 @@ void InitPMUStats(PMUStats *stats) { stats->size = 0; }
 // zero‐initialized by default, but we override it here:
 _Thread_local PMUStats stats = {.size = 0,
                                 .pmu_index = 5, // use pmevcntr5_el0 as default
-                                .init = 0};
+                                .init = 0,
+                                .dump_idx = 0};
 
 // Callback function call over all the loaded libaries by dl_iterate_phdr
 int RewriteCallback(struct dl_phdr_info *info, size_t size, void *data) {
@@ -316,7 +320,7 @@ bool MakeCodePagesWriteable() {
 void __llvm_dump_mip_profile(void) {
   LoadAndDumpBlinkConfigs();
   InitPMUStats(&stats);
-  if (configs.mode) {
+  if (false) {
     // do nothing if lib is not provided/supported in dynamic mode
     if (!MakeCodePagesWriteable()) {
       return;
@@ -332,7 +336,7 @@ void __llvm_dump_mip_profile(void) {
     configs.pervasive = 1;
   }
 
-  enable_global = 1;
+  enable_global ^= 1;
 
   configs.total_sample_count = 0;
 
@@ -405,13 +409,14 @@ void *ControlThreadFunction() {
 // when performing any modifications to them
 
 // Flush the thread local sample buffer to disk
-void dump_data_array(Data *array, int size) {
+void dump_data_array(PMUStats *stats, int size) {
 
   // 1) read thread ID from TPIDR_EL0
-  uintptr_t tid;
-  asm volatile("mrs %0, tpidr_el0" : "=r"(tid));
+  // uintptr_t tid;
+  // asm volatile("mrs %0, tpidr_el0" : "=r"(tid));
 
   // 2) create "<output_dir>"
+  Data *array = stats->data;
   const char *subdir = "";
   size_t od_len = strlen(configs.output_dir);
   size_t sub_len = strlen(subdir);
@@ -421,17 +426,19 @@ void dump_data_array(Data *array, int size) {
 
   snprintf(dirpath, dir_buf, "%s/%s", configs.output_dir, subdir);
 
-  // 3) build filename:  "<output_dir>/pmu/thread_0x<hex>.bin"
-  const char *prefix = "thread_0x";
+  // build filename:  "<dirpath>/<lib>_<tid>.bin"
   const char *suffix = ".bin";
-  // how many hex digits?
-  size_t hex_digits = snprintf(NULL, 0, "%lx", tid);
-  // dirpath + '/' + prefix + hex_digits + suffix + '\0'
-  size_t fn_buf =
-      strlen(dirpath) + 1 + strlen(prefix) + hex_digits + strlen(suffix) + 1;
-  char filename[fn_buf];
+  pid_t tid = syscall(SYS_gettid);
+  size_t num_digits = snprintf(NULL, 0, "%d", tid);
+  size_t dump_num_digits = snprintf(NULL, 0, "%d", stats->dump_idx);
+  // dirpath + '/' + prefix + '_' + hex_digits + suffix + '\0'
+  size_t fn_buf = strlen(dirpath) + 1 + strlen(configs.lib) + 1 + num_digits +
+                  1 + dump_num_digits + strlen(suffix) + 1;
+  char *filename = malloc(fn_buf * sizeof(char));
 
-  snprintf(filename, fn_buf, "%s/%s%lx%s", dirpath, prefix, tid, suffix);
+  snprintf(filename, fn_buf, "%s/%s_%d_%d%s", dirpath, configs.lib, tid,
+           stats->dump_idx, suffix);
+  stats->dump_idx++;
 
   // 4) open+append & write
   FILE *fp = fopen(filename, "ab");
@@ -442,6 +449,7 @@ void dump_data_array(Data *array, int size) {
     }
     fclose(fp);
   }
+  free(filename);
 }
 
 static inline int perf_event_open_syscall(struct perf_event_attr *attr,
@@ -555,11 +563,10 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
                  "add     sp,   sp,    #48\n\t");
   }
 
-  if (!configs.pervasive &&
-      ((ProfileData->CallCount >= configs.nsamples) ||
-       (ProfileData->DisabledFlag) ||
-       (configs.max_samples &&
-        configs.total_sample_count >= configs.max_samples))) {
+  // if (!configs.pervasive && ((ProfileData->CallCount >= configs.nsamples) ||
+  // (ProfileData->DisabledFlag) || (configs.max_samples &&
+  // configs.total_sample_count >= configs.max_samples))) {
+  if (false) {
     void *return_address;
     asm volatile("mov %0, lr" : "=r"(return_address));
 
@@ -613,7 +620,7 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
                    "stp x29, x30, [sp, #-16]!\n\t"
                    "bl dump_data_array_helper\n\t"
                    :
-                   : "r"(local_stats->data), "r"(size)
+                   : "r"(local_stats), "r"(size)
                    : "x0", "x1");
       return NULL;
     }
@@ -718,12 +725,17 @@ void *__custom_instrumentation_exit(ProfileData_t *ProfileData,
       // Reset
       local_stats->size = 0;
       // dump_data_array(stats.data, stats.size);
+      // x29 and x30 are fp (base of custom_instrument), lr (for
+      // custom_instrument_exit's parents) saved on the stack for some reason
+      // then we go to dump_data_array_helper (x30 is rewritten now as
+      // custom_instrument_exit + 4) in dump_data_array_helper, everystate is
+      // saved so on return, dump_data_array will restore the the state
       asm volatile("mov x0, %0\n\t"
                    "mov x1, %1\n\t"
                    "stp x29, x30, [sp, #-16]!\n\t"
                    "bl dump_data_array_helper\n\t"
                    :
-                   : "r"(local_stats->data), "r"(size)
+                   : "r"(local_stats), "r"(size)
                    : "x0", "x1");
       return NULL;
     }
