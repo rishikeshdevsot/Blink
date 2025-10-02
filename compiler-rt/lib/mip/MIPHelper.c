@@ -21,7 +21,7 @@ uint32_t enable_global = 0;
 // Signal Handler for SIGUSR2
 void dumpProfileOnSignal(int signal) { __llvm_dump_mip_profile(); }
 
-BlinkConfigs configs = {
+BlinkConfigs _configs = {
     // clang-format off
     .total_sample_count = 0,
     .pervasive          = false,
@@ -83,14 +83,14 @@ void LoadAndDumpBlinkConfigs(void) {
       if (strncmp(p, "output_dir", 10) == 0) {
         char dirval[256];
         if (sscanf(p, "output_dir = %255s", dirval) == 1) {
-          strncpy(configs.output_dir, dirval, sizeof(configs.output_dir) - 1);
-          configs.output_dir[sizeof(configs.output_dir) - 1] = '\0';
+          strncpy(_configs.output_dir, dirval, sizeof(_configs.output_dir) - 1);
+          _configs.output_dir[sizeof(_configs.output_dir) - 1] = '\0';
         }
       } else if (strncmp(p, "lib", 3) == 0) {
         char libval[256];
         if (sscanf(p, "lib = %255s", libval) == 1) {
-          strncpy(configs.lib, libval, sizeof(configs.lib) - 1);
-          configs.lib[sizeof(configs.lib) - 1] = '\0';
+          strncpy(_configs.lib, libval, sizeof(_configs.lib) - 1);
+          _configs.lib[sizeof(_configs.lib) - 1] = '\0';
         }
       }
       // 2) the rest are unsigned values
@@ -99,28 +99,28 @@ void LoadAndDumpBlinkConfigs(void) {
         unsigned long val;
         if (sscanf(p, "%63[^= ] = %lu", key, &val) == 2) {
           if (strcmp(key, "PMU_index") == 0)
-            configs.PMU_index = val;
+            _configs.PMU_index = val;
           else if (strcmp(key, "max_samples") == 0)
-            configs.max_samples = val;
+            _configs.max_samples = val;
           else if (strcmp(key, "nsamples") == 0)
-            configs.nsamples = val;
+            _configs.nsamples = val;
           else if (strcmp(key, "sampling_interval") == 0)
-            configs.sampling_interval = val;
+            _configs.sampling_interval = val;
           else if (strcmp(key, "buffer_size") == 0)
-            configs.buffer_size = val;
+            _configs.buffer_size = val;
           else if (strcmp(key, "PMU_event") == 0)
-            configs.PMU_event = val;
+            _configs.PMU_event = val;
           else if (strcmp(key, "pervasive") == 0)
-            configs.pervasive = (bool)val;
+            _configs.pervasive = (bool)val;
           else if (strcmp(key, "mode") == 0)
-            configs.mode = (bool)val;
+            _configs.mode = (bool)val;
         }
       }
     }
     fclose(in);
   }
   // write out the runtime-used values
-  DumpBlinkConfigs(out_path, &configs);
+  DumpBlinkConfigs(out_path, &_configs);
 }
 
 // Created if mprotect call was succesful
@@ -236,7 +236,7 @@ void EnableAllInstrumentation() {
   asm volatile("isb");
 }
 
-void *ControlThreadFunction();
+// void * ControlThreadFunction();
 
 void __llvm_mip_runtime_initialize(void) {
   struct sigaction DumpProfile;
@@ -244,6 +244,11 @@ void __llvm_mip_runtime_initialize(void) {
   DumpProfile.sa_flags = 0;
   DumpProfile.sa_handler = &dumpProfileOnSignal;
   sigaction(SIGUSR2, &DumpProfile, NULL);
+
+  // struct sigaction stopInstr;
+  // stopInstr.sa_flags = 0;
+  // stopInstr.sa_handler = &stopInstrumentation;
+  // sigaction(SIGUSR1, &stopInstr, NULL);
 }
 
 void InitPMUStats(PMUStats *stats) { stats->size = 0; }
@@ -251,7 +256,8 @@ void InitPMUStats(PMUStats *stats) { stats->size = 0; }
 // zero‐initialized by default, but we override it here:
 _Thread_local PMUStats stats = {.size = 0,
                                 .pmu_index = 5, // use pmevcntr5_el0 as default
-                                .init = 0};
+                                .init = 0,
+                                .dump_idx = 0};
 
 // Callback function call over all the loaded libaries by dl_iterate_phdr
 int RewriteCallback(struct dl_phdr_info *info, size_t size, void *data) {
@@ -301,7 +307,7 @@ int RewriteCallback(struct dl_phdr_info *info, size_t size, void *data) {
 
 // Returns true is successful, false if not
 bool MakeCodePagesWriteable() {
-  const char *target_lib = configs.lib;
+  const char *target_lib = _configs.lib;
   if (strlen(target_lib) == 0) {
     // if user fails to specify the rewriting library, we must not set the
     // enable_global flag as it will cause a segfault.
@@ -316,7 +322,7 @@ bool MakeCodePagesWriteable() {
 void __llvm_dump_mip_profile(void) {
   LoadAndDumpBlinkConfigs();
   InitPMUStats(&stats);
-  if (configs.mode) {
+  if (false) {
     // do nothing if lib is not provided/supported in dynamic mode
     if (!MakeCodePagesWriteable()) {
       return;
@@ -329,15 +335,19 @@ void __llvm_dump_mip_profile(void) {
   } else {
     // if we are in regular mode, always turn on the instrumentation without
     // triggering any disabling mechanism
-    configs.pervasive = 1;
+    _configs.pervasive = 1;
   }
 
-  enable_global = 1;
+  enable_global ^= 1;
 
-  configs.total_sample_count = 0;
+  _configs.total_sample_count = 0;
 
   asm volatile("isb");
 }
+
+// __llvm_stop_instrumentation(void) {
+//   enable_global = 0;
+// }
 
 int __llvm_dump_mip_profile_with_filename(const char *Filename) {
   FILE *filep = fopen(Filename, "wb");
@@ -391,12 +401,12 @@ void *ControlThreadFunction() {
     sleep(1);
   }
   while (enable_global) {
-    if (configs.max_samples &&
-        configs.total_sample_count >= configs.max_samples) {
+    if (_configs.max_samples &&
+        _configs.total_sample_count >= _configs.max_samples) {
       return NULL;
     }
     EnableAllInstrumentation();
-    usleep(configs.sampling_interval);
+    usleep(_configs.sampling_interval);
   }
   return NULL;
 }
@@ -405,33 +415,36 @@ void *ControlThreadFunction() {
 // when performing any modifications to them
 
 // Flush the thread local sample buffer to disk
-void dump_data_array(Data *array, int size) {
+void dump_data_array(PMUStats *stats, int size) {
 
   // 1) read thread ID from TPIDR_EL0
-  uintptr_t tid;
-  asm volatile("mrs %0, tpidr_el0" : "=r"(tid));
+  // uintptr_t tid;
+  // asm volatile("mrs %0, tpidr_el0" : "=r"(tid));
 
   // 2) create "<output_dir>"
+  Data *array = stats->data;
   const char *subdir = "";
-  size_t od_len = strlen(configs.output_dir);
+  size_t od_len = strlen(_configs.output_dir);
   size_t sub_len = strlen(subdir);
   // +1 for '/', +1 for terminating '\0'
   size_t dir_buf = od_len + 1 + sub_len + 1;
   char dirpath[dir_buf];
 
-  snprintf(dirpath, dir_buf, "%s/%s", configs.output_dir, subdir);
+  snprintf(dirpath, dir_buf, "%s/%s", _configs.output_dir, subdir);
 
-  // 3) build filename:  "<output_dir>/pmu/thread_0x<hex>.bin"
-  const char *prefix = "thread_0x";
+  // build filename:  "<dirpath>/<lib>_<tid>.bin"
   const char *suffix = ".bin";
-  // how many hex digits?
-  size_t hex_digits = snprintf(NULL, 0, "%lx", tid);
-  // dirpath + '/' + prefix + hex_digits + suffix + '\0'
-  size_t fn_buf =
-      strlen(dirpath) + 1 + strlen(prefix) + hex_digits + strlen(suffix) + 1;
-  char filename[fn_buf];
+  pid_t tid = syscall(SYS_gettid);
+  size_t num_digits = snprintf(NULL, 0, "%d", tid);
+  size_t dump_num_digits = snprintf(NULL, 0, "%d", stats->dump_idx);
+  // dirpath + '/' + prefix + '_' + hex_digits + suffix + '\0'
+  size_t fn_buf = strlen(dirpath) + 1 + strlen(_configs.lib) + 1 + num_digits +
+                  1 + dump_num_digits + strlen(suffix) + 1;
+  char *filename = malloc(fn_buf * sizeof(char));
 
-  snprintf(filename, fn_buf, "%s/%s%lx%s", dirpath, prefix, tid, suffix);
+  snprintf(filename, fn_buf, "%s/%s_%d_%d%s", dirpath, _configs.lib, tid,
+           stats->dump_idx, suffix);
+  stats->dump_idx++;
 
   // 4) open+append & write
   FILE *fp = fopen(filename, "ab");
@@ -442,6 +455,7 @@ void dump_data_array(Data *array, int size) {
     }
     fclose(fp);
   }
+  free(filename);
 }
 
 static inline int perf_event_open_syscall(struct perf_event_attr *attr,
@@ -466,7 +480,7 @@ void init_perf_util() {
   memset(&pe, 0, sizeof(struct perf_event_attr));
 
   pe.type = PERF_TYPE_HARDWARE;
-  pe.config = configs.PMU_event;
+  pe.config = _configs.PMU_event;
   pe.size = sizeof(struct perf_event_attr);
 
   // Enable counting for user-space only
@@ -555,11 +569,10 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
                  "add     sp,   sp,    #48\n\t");
   }
 
-  if (!configs.pervasive &&
-      ((ProfileData->CallCount >= configs.nsamples) ||
-       (ProfileData->DisabledFlag) ||
-       (configs.max_samples &&
-        configs.total_sample_count >= configs.max_samples))) {
+  // if (!configs.pervasive && ((ProfileData->CallCount >= configs.nsamples) ||
+  // (ProfileData->DisabledFlag) || (configs.max_samples &&
+  // configs.total_sample_count >= configs.max_samples))) {
+  if (false) {
     void *return_address;
     asm volatile("mov %0, lr" : "=r"(return_address));
 
@@ -571,7 +584,7 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
     // asm volatile("isb");
   } else {
 
-    configs.total_sample_count++;
+    _configs.total_sample_count++;
     ProfileData->CallCount += 1;
 
     local_stats->data[local_stats->size].source_location = CodeLocationID;
@@ -580,7 +593,7 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
     int64_t value;
     // 5 captures perf_event set-up after emperical experiment on realworkload
     // asm volatile("isb");
-    switch (configs.PMU_index) {
+    switch (_configs.PMU_index) {
     case 0:
       asm volatile("mrs %0, pmevcntr0_el0" : "=r"(value));
       break;
@@ -603,7 +616,7 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
     // asm volatile("isb");
     local_stats->data[local_stats->size++].pmu_value = value;
 
-    if (local_stats->size >= configs.buffer_size) {
+    if (local_stats->size >= _configs.buffer_size) {
       int size = local_stats->size;
       // Reset
       local_stats->size = 0;
@@ -613,7 +626,7 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
                    "stp x29, x30, [sp, #-16]!\n\t"
                    "bl dump_data_array_helper\n\t"
                    :
-                   : "r"(local_stats->data), "r"(size)
+                   : "r"(local_stats), "r"(size)
                    : "x0", "x1");
       return NULL;
     }
@@ -636,7 +649,7 @@ void *__custom_instrumentation_exit(ProfileData_t *ProfileData,
   int64_t value asm("x9");
   // 5 captures perf_event set-up after emperical experiment on realworkload
   // asm volatile("isb");
-  switch (configs.PMU_index) {
+  switch (_configs.PMU_index) {
   case 0:
     asm volatile("mrs %0, pmevcntr0_el0" : "=r"(value));
     break;
@@ -690,11 +703,11 @@ void *__custom_instrumentation_exit(ProfileData_t *ProfileData,
       :
       : "x0", "memory");
 
-  if (!configs.pervasive &&
-      ((ProfileData->CallCount >= configs.nsamples) ||
+  if (!_configs.pervasive &&
+      ((ProfileData->CallCount >= _configs.nsamples) ||
        (ProfileData->DisabledFlag) ||
-       (configs.max_samples &&
-        configs.total_sample_count >= configs.max_samples))) {
+       (_configs.max_samples &&
+        _configs.total_sample_count >= _configs.max_samples))) {
     void *return_address;
     asm volatile("mov %0, lr" : "=r"(return_address));
 
@@ -710,20 +723,25 @@ void *__custom_instrumentation_exit(ProfileData_t *ProfileData,
     // access PMU counter
     local_stats->data[local_stats->size++].pmu_value = value;
 
-    configs.total_sample_count++;
+    _configs.total_sample_count++;
     ProfileData->CallCount += 1;
 
-    if (local_stats->size >= configs.buffer_size) {
+    if (local_stats->size >= _configs.buffer_size) {
       int size = local_stats->size;
       // Reset
       local_stats->size = 0;
       // dump_data_array(stats.data, stats.size);
+      // x29 and x30 are fp (base of custom_instrument), lr (for
+      // custom_instrument_exit's parents) saved on the stack for some reason
+      // then we go to dump_data_array_helper (x30 is rewritten now as
+      // custom_instrument_exit + 4) in dump_data_array_helper, everystate is
+      // saved so on return, dump_data_array will restore the the state
       asm volatile("mov x0, %0\n\t"
                    "mov x1, %1\n\t"
                    "stp x29, x30, [sp, #-16]!\n\t"
                    "bl dump_data_array_helper\n\t"
                    :
-                   : "r"(local_stats->data), "r"(size)
+                   : "r"(local_stats), "r"(size)
                    : "x0", "x1");
       return NULL;
     }

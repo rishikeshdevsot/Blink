@@ -107,11 +107,12 @@ typedef struct {
   int size;
   int pmu_index;
   bool init;
+  int dump_idx;
 } PMUStats;
 
 void InitPMUStats(PMUStats *stats);
 
-void dump_data_array(Data *array, int size);
+void dump_data_array(PMUStats *stats, int size);
 void init_perf_util();
 void *__custom_instrumentation(ProfileData_t *ProfileData,
                                uint64_t CodeLocationID);
