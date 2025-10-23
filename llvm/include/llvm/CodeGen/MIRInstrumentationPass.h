@@ -35,6 +35,7 @@ public:
   static cl::opt<std::string, true> FunctionSCLFilenameOption;
   static std::string LinkUnitName;
   static cl::opt<std::string, true> LinkUnitNameOption;
+  static cl::opt<std::string> BlinkWhitelistFile;
   static cl::list<std::string> BlinkBlacklistFunctions;
   static cl::list<std::string> BlinkWhitelistFunctions;
   static cl::opt<std::string> BlinkMode;

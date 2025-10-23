@@ -53,6 +53,10 @@ cl::opt<bool> MIRInstrumentation::MIREntryOnly(
     "mir-entry-only", cl::init(false), cl::ZeroOrMore,
     cl::desc("Instrument entry blocks of functions only"));
 
+cl::opt<std::string> MIRInstrumentation::BlinkWhitelistFile(
+    "blink-whitelist-file", cl::Optional,
+    llvm::cl::desc("Path to whitelist of mangled function names"),
+    llvm::cl::value_desc("filename"));
 cl::list<std::string> MIRInstrumentation::BlinkWhitelistFunctions(
     "blink-whitelist-functions",
     llvm::cl::desc("List of mangled function names to instrument"),
@@ -109,6 +113,48 @@ cl::opt<std::string, true> MIRInstrumentation::LinkUnitNameOption(
     cl::init(""), cl::ZeroOrMore, cl::value_desc("LinkUnitName"),
     cl::desc("Use <LinkUnitName> to identify this link unit"));
 
+static bool isInList(const llvm::cl::list<std::string> &list,
+                     const std::string &functionName) {
+  return std::find(list.begin(), list.end(), functionName) != list.end();
+}
+
+static void loadListFromFile(const cl::opt<std::string> &file,
+                             cl::list<std::string> &list) {
+  if (file.empty())
+    return;
+
+  auto BufferOrErr = MemoryBuffer::getFile(file);
+  if (!BufferOrErr) {
+    errs() << "[MIRInstrumentation] Could not open whitelist file: " << file
+           << "\n";
+    return;
+  }
+
+  std::istringstream Input(BufferOrErr.get()->getBuffer().str());
+  std::string Line;
+  unsigned Count = 0;
+
+  while (std::getline(Input, Line)) {
+    // trim spaces
+    while (!Line.empty() && isspace(Line.back()))
+      Line.pop_back();
+    while (!Line.empty() && isspace(Line.front()))
+      Line.erase(Line.begin());
+    // skip comments / empty lines
+    if (Line.empty() || Line[0] == '#')
+      continue;
+    // hack... getting seg fault from this function being called many times
+    if (!isInList(list, Line)) {
+      list.addValue(Line);
+    }
+
+    ++Count;
+  }
+
+  errs() << "[MIRInstrumentation] Loaded " << Count << " entries from " << file
+         << "\n";
+}
+
 bool MIRInstrumentation::doInitialization(Module &M) {
   auto &Ctx = M.getContext();
   if (EnableMachineInstrumentation) {
@@ -134,6 +180,7 @@ bool MIRInstrumentation::doInitialization(Module &M) {
     if (!FunctionSCLFilename.empty())
       SCL = SpecialCaseList::createOrDie({FunctionSCLFilename},
                                          *vfs::getRealFileSystem());
+    loadListFromFile(BlinkWhitelistFile, BlinkWhitelistFunctions);
   }
   return false;
 }
@@ -336,11 +383,6 @@ void MIRInstrumentation::runOnMachineBasicBlock(MachineBasicBlock &MBB,
   else
     llvm_unreachable("Basic Block Instrumentation type not specified");
   ++NumBlocksInstrumented;
-}
-
-static bool isInList(const llvm::cl::list<std::string> &list,
-                     const std::string &functionName) {
-  return std::find(list.begin(), list.end(), functionName) != list.end();
 }
 
 bool MIRInstrumentation::shouldInstrumentMachineFunction(
