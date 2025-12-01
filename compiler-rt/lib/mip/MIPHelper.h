@@ -96,18 +96,18 @@ typedef struct {
 void DumpBlinkConfigs(const char *path, const BlinkConfigs *c);
 void LoadAndDumpBlinkConfigs(void);
 
-#define MAX_DATA_SIZE 10000
+#define MAX_DATA_SIZE 16384
 typedef struct {
   uint64_t source_location;
   uint64_t pmu_value;
 } Data;
 
 typedef struct {
-  Data data[MAX_DATA_SIZE];
   int size;
   int pmu_index;
   bool init;
   int dump_idx;
+  Data data[MAX_DATA_SIZE];
 } PMUStats;
 
 void InitPMUStats(PMUStats *stats);

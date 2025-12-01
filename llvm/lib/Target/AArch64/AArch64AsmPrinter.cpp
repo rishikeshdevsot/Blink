@@ -346,15 +346,16 @@ void AArch64AsmPrinter::LowerMIP_INSTRUMENTATION(const MachineInstr &MI) {
   EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::STPXpre)
                                    .addReg(AArch64::SP)
                                    .addReg(AArch64::X0)
-                                   .addReg(AArch64::X8)
+                                   .addReg(AArch64::X1)
                                    .addReg(AArch64::SP)
                                    .addImm(-2));
   // str x1, [sp, #-16]!
-  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::STRXpre)
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::STPXpre)
                                    .addReg(AArch64::SP)
-                                   .addReg(AArch64::X1)
+                                   .addReg(AArch64::X8)
+                                   .addReg(AArch64::X16)
                                    .addReg(AArch64::SP)
-                                   .addImm(-16));
+                                   .addImm(-2));
 
   // mov w1, <(CodeLocationID & 0xffff)>
   EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::MOVZWi)
@@ -412,16 +413,17 @@ void AArch64AsmPrinter::LowerMIP_INSTRUMENTATION(const MachineInstr &MI) {
                                    .addReg(AArch64::SP)
                                    .addImm(2));
   // ldr X1, sp, #16
-  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::LDRXpost)
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::LDPXpost)
                                    .addReg(AArch64::SP)
-                                   .addReg(AArch64::X1)
+                                   .addReg(AArch64::X8)
+                                   .addReg(AArch64::X16)
                                    .addReg(AArch64::SP)
-                                   .addImm(16));
+                                   .addImm(2));
   // ldp X0, X8, sp, #16
   EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::LDPXpost)
                                    .addReg(AArch64::SP)
                                    .addReg(AArch64::X0)
-                                   .addReg(AArch64::X8)
+                                   .addReg(AArch64::X1)
                                    .addReg(AArch64::SP)
                                    .addImm(2));
 }
