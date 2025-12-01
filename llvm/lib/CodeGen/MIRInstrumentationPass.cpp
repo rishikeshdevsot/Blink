@@ -54,7 +54,7 @@ cl::opt<bool> MIRInstrumentation::MIREntryOnly(
     cl::desc("Instrument entry blocks of functions only"));
 
 cl::opt<std::string> MIRInstrumentation::BlinkWhitelistFile(
-    "blink-whitelist-file", cl::Optional,
+    "blink-whitelist-file", llvm::cl::Optional,
     llvm::cl::desc("Path to whitelist of mangled function names"),
     llvm::cl::value_desc("filename"));
 cl::list<std::string> MIRInstrumentation::BlinkWhitelistFunctions(
@@ -98,7 +98,7 @@ cl::opt<unsigned> MIRInstrumentation::MachineProfileMinInstructionCount(
 
 // A unique ID for each instrumentation point
 // Defined atomic because the execution of this pass is multi-threaded
-std::atomic<unsigned> MIRInstrumentation::UniqueCodeLocationID(0);
+std::atomic<unsigned> MIRInstrumentation::UniqueCodeLocationID(1);
 std::string MIRInstrumentation::FunctionSCLFilename;
 cl::opt<std::string, true> FunctionSCLFilenameOption(
     "machine-profile-special-case-list",
@@ -261,6 +261,61 @@ MachineInstr *MIRInstrumentation::bbContainsReturn(MachineBasicBlock &MBB) {
   return nullptr;
 }
 
+MachineInstr *MIRInstrumentation::bbContainsCall(MachineBasicBlock &MBB,
+                                                 const TargetInstrInfo &TII) {
+  // SmallVector<MachineInstr*, 16> callInstrs;
+
+  // for (auto &MBBI : MBB) {
+  //   if (MBBI.isCall()) {
+  //     MachineInstr *callInstr = &MBBI;
+  //     callInstrs.push_back(callInstr);
+  //     // std::next(callInstr);
+  //     // callInstrs.pushback(callInstr);
+  //   }
+  // }
+
+  for (auto MI = MBB.begin(), ME = MBB.end(); MI != ME; ++MI) {
+    // also skip tail return, which otherwise would be treated as a call
+
+    if (!MI->isCall() || MI->isReturn()) {
+      continue;
+    }
+    StringRef CalleeName = "";
+    for (const MachineOperand &MO : MI->operands()) {
+      if (MO.isGlobal()) {
+        CalleeName = MO.getGlobal()->getName();
+      } else if (MO.isSymbol()) {
+        CalleeName = MO.getSymbolName();
+      }
+    }
+
+    unsigned UniqueCodeID = 0;
+    // Instrument Exit
+    BuildMI(MBB, MI, MI->getDebugLoc(),
+            TII.get(TargetOpcode::MIP_INSTRUMENTATION))
+        .addReg(TII.getTemporaryMachineProfileRegister(MBB))
+        .addImm(UniqueCodeID)
+        .addExternalSymbol(
+            "__custom_instrumentation") // Name of tracing function
+        .addImm(
+            0) // Flag to specify whether instrumentation is for an exit block
+        .addImm(BlinkMode == "dynamic");
+
+    auto NextIt = std::next(MI);
+
+    UniqueCodeID = 1;
+    BuildMI(MBB, NextIt, MI->getDebugLoc(),
+            TII.get(TargetOpcode::MIP_INSTRUMENTATION))
+        .addReg(TII.getTemporaryMachineProfileRegister(MBB))
+        .addImm(UniqueCodeID)
+        .addExternalSymbol(
+            "__custom_instrumentation") // Name of tracing function
+        .addImm(
+            0) // Flag to specify whether instrumentation is for an exit block
+        .addImm(BlinkMode == "dynamic");
+  }
+  return nullptr;
+}
 bool MIRInstrumentation::runOnMachineFunction(MachineFunction &MF) {
   if (!shouldInstrumentMachineFunction(MF))
     return false;
@@ -301,7 +356,10 @@ bool MIRInstrumentation::runOnMachineFunction(MachineFunction &MF) {
   ++NumInstrumented;
 
   if (EnableMachineCallGraph) {
-
+    for (uint32_t BlockID = 0; BlockID < MBBs.size(); BlockID++) {
+      auto &MBB = *MBBs[BlockID];
+      bbContainsCall(MBB, TII);
+    }
     unsigned UniqueCodeID = ++UniqueCodeLocationID;
 
     // Instrument entry
@@ -348,7 +406,7 @@ bool MIRInstrumentation::runOnMachineFunction(MachineFunction &MF) {
               .addImm(UniqueCodeID)
               .addExternalSymbol(
                   "__custom_instrumentation") // Name of tracing function
-              .addImm(1) // Flag to specify whether instrumentation is for an
+              .addImm(0) // Flag to specify whether instrumentation is for an
                          // exit block
               .addImm(BlinkMode == "dynamic");
           addCodeInfoToMap(MF, DLReturn, UniqueCodeID);

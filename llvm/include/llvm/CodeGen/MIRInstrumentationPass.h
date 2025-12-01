@@ -9,6 +9,7 @@
 #ifndef LLVM_CODEGEN_MIRINSTRUMENTATIONPASS_H
 #define LLVM_CODEGEN_MIRINSTRUMENTATIONPASS_H
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SpecialCaseList.h"
@@ -64,6 +65,8 @@ private:
   bool runOnMachineFunction(MachineFunction &MF) override;
   bool bbContainsPthreadExit(MachineBasicBlock &MBB);
   MachineInstr *bbContainsReturn(MachineBasicBlock &MBB);
+  MachineInstr *bbContainsCall(MachineBasicBlock &MBB,
+                               const TargetInstrInfo &TII);
   uint32_t getControlFlowGraphSignature(
       SmallVectorImpl<MachineBasicBlock *> &MBBs) const;
   void getMachineBasicBlocks(MachineFunction &MF,

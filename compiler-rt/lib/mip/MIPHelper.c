@@ -42,6 +42,75 @@ BlinkConfigs configs = {
     // clang-format on
 };
 
+void print_regs(void) {
+  uint64_t r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15,
+      r16, r17;
+
+  asm volatile("mov %0, x1\n\t"
+               "mov %1, x2\n\t"
+               "mov %2, x3\n\t"
+               "mov %3, x4\n\t"
+               "mov %4, x5\n\t"
+               "mov %5, x6\n\t"
+               "mov %6, x7\n\t"
+               "mov %7, x8\n\t"
+               "mov %8, x9\n\t"
+               "mov %9, x10\n\t"
+               "mov %10, x11\n\t"
+               "mov %11, x12\n\t"
+               "mov %12, x13\n\t"
+               "mov %13, x14\n\t"
+               "mov %14, x15\n\t"
+               "mov %15, x16\n\t"
+               "mov %16, x17\n\t"
+               : "=r"(r1), "=r"(r2), "=r"(r3), "=r"(r4), "=r"(r5), "=r"(r6),
+                 "=r"(r7), "=r"(r8), "=r"(r9), "=r"(r10), "=r"(r11), "=r"(r12),
+                 "=r"(r13), "=r"(r14), "=r"(r15), "=r"(r16), "=r"(r17)
+               :
+               :);
+
+  printf("x1  = 0x%016llx\n", (unsigned long long)r1);
+  printf("x2  = 0x%016llx\n", (unsigned long long)r2);
+  printf("x3  = 0x%016llx\n", (unsigned long long)r3);
+  printf("x4  = 0x%016llx\n", (unsigned long long)r4);
+  printf("x5  = 0x%016llx\n", (unsigned long long)r5);
+  printf("x6  = 0x%016llx\n", (unsigned long long)r6);
+  printf("x7  = 0x%016llx\n", (unsigned long long)r7);
+  printf("x8  = 0x%016llx\n", (unsigned long long)r8);
+  printf("x9  = 0x%016llx\n", (unsigned long long)r9);
+  printf("x10 = 0x%016llx\n", (unsigned long long)r10);
+  printf("x11 = 0x%016llx\n", (unsigned long long)r11);
+  printf("x12 = 0x%016llx\n", (unsigned long long)r12);
+  printf("x13 = 0x%016llx\n", (unsigned long long)r13);
+  printf("x14 = 0x%016llx\n", (unsigned long long)r14);
+  printf("x15 = 0x%016llx\n", (unsigned long long)r15);
+  printf("x16 = 0x%016llx\n", (unsigned long long)r16);
+  printf("x17 = 0x%016llx\n", (unsigned long long)r17);
+}
+
+void set_regs(void) {
+  asm volatile("mov x1,  #0x11\n\t"
+               "mov x2,  #0x22\n\t"
+               "mov x3,  #0x33\n\t"
+               "mov x4,  #0x44\n\t"
+               "mov x5,  #0x55\n\t"
+               "mov x6,  #0x66\n\t"
+               "mov x7,  #0x77\n\t"
+               "mov x8,  #0x88\n\t"
+               "mov x9,  #0x99\n\t"
+               "mov x10, #0xAA\n\t"
+               "mov x11, #0xBB\n\t"
+               "mov x12, #0xCC\n\t"
+               "mov x13, #0xDD\n\t"
+               "mov x14, #0xEE\n\t"
+               "mov x15, #0xFF\n\t"
+               "mov x16, #0x1234\n\t"
+               "mov x17, #0x5678\n\t"
+               :
+               :
+               :);
+}
+
 void DumpBlinkConfigs(const char *path, const BlinkConfigs *c) {
   FILE *f = fopen(path, "w");
   if (!f) {
@@ -414,7 +483,10 @@ void dump_data_array(PMUStats *stats, int size) {
   // 1) read thread ID from TPIDR_EL0
   // uintptr_t tid;
   // asm volatile("mrs %0, tpidr_el0" : "=r"(tid));
-
+  // printf("dump called with size = %d\n", size);
+  // if (size >= MAX_DATA_SIZE + 1) {
+  // exit(0);
+  // }
   // 2) create "<output_dir>"
   Data *array = stats->data;
   const char *subdir = "";
@@ -481,28 +553,28 @@ void init_perf_util() {
   pe.exclude_kernel = 1; // Exclude kernel events
   pe.disabled = 1;       // Disable counter initially
 
-  uint64_t before;
-  asm volatile("mrs %0, pmcntenset_el0" : "=r"(before));
+  // uint64_t before;
+  // asm volatile("mrs %0, pmcntenset_el0" : "=r"(before));
 
   int fd = perf_event_open_syscall(&pe, 0, -1, -1, 0);
 
   ioctl(fd, PERF_EVENT_IOC_RESET, 0);  // Reset the counter
   ioctl(fd, PERF_EVENT_IOC_ENABLE, 0); // Start counting immediately
 
-  uint64_t after;
-  asm volatile("mrs %0, pmcntenset_el0" : "=r"(after));
+  // uint64_t after;
+  // asm volatile("mrs %0, pmcntenset_el0" : "=r"(after));
 
-  uint64_t diff = before ^ after;
-  if (diff == 0) {
-    // use pmevcntr5_el0 as default
-    stats.pmu_index = 5;
-  } else {
-    for (int bit = 0; bit < 8; ++bit) {
-      if (diff & (1ULL << bit)) {
-        stats.pmu_index = bit;
-      }
-    }
-  }
+  // uint64_t diff = before ^ after;
+  // if (diff == 0) {
+  //     // use pmevcntr5_el0 as default
+  stats.pmu_index = 5;
+  // } else {
+  //     for (int bit = 0; bit < 8; ++bit) {
+  //         if (diff & (1ULL << bit)) {
+  //           stats.pmu_index = bit;
+  //         }
+  //     }
+  // }
 
   stats.init = 1;
 }
@@ -513,234 +585,132 @@ void init_perf_util() {
 // can cause stack corruption or unexpected behaviour
 void *__custom_instrumentation(ProfileData_t *ProfileData,
                                uint64_t CodeLocationID) {
-  if (!enable_global) {
-    return NULL;
-  }
+  asm volatile("adrp  x16, enable_global\n"
+               "ldr   w16, [x16, #:lo12:enable_global]\n"
+               "cmp   w16, #0\n" // compare with zero
+               "b.ne 1f\n"       // if enable_global != 0 → skip return
+               "b 3f          \n"
+               "1:");
 
   // hoist emutls by caching thread local pointer in a register
   register PMUStats *local_stats asm("x16");
 
+  // set_regs();
   asm volatile(
       // ─── compute &__emutls_v.stats into X16 ───────────────────
       "adrp    x0, __emutls_v.stats\n\t"
       "add     x0, x0, :lo12:__emutls_v.stats\n\t"
 
       // ─── save X0, X1, X8, X2, FP (X29) and LR (X30) ───────────
-      "sub     sp, sp,    #48\n\t"        // allocate 48 bytes
-      "stp     x3,   x2,   [sp, #0]\n\t"  // save X0 & X1
-      "stp     x8,   x1,   [sp, #16]\n\t" // save X8 & X2
-      "stp     x29,  x30,  [sp, #32]\n\t" // save FP & LR
+      "sub     sp, sp,    #160   \n\t" // allocate 48 bytes
+      // "stp     x2,  x3,  [sp, #16]\n\t"
+      // "stp     x4,  x5,  [sp, #32]\n\t"
+      // "stp     x6,  x7,  [sp, #48]\n\t"
+      "stp     x8,  x9,  [sp, #64]\n\t"
+      // "stp     x10, x11, [sp, #80]\n\t"
+      // "stp     x12, x13, [sp, #96]\n\t"
+      // "stp     x14, x15, [sp, #112]\n\t"
+      "stp     x1, x17, [sp, #128]\n\t"
+      "stp x29, x30,    [sp, #144]\n\t"
 
       // ─── call the TLS helper ─────────────────────────────────
       "bl      __emutls_get_address\n\t"
+      // use x8 x0 x16 x17
       "mov     x16, x0\n\t" // capture return into X16
 
       // ─── restore FP, LR, and X8 ───────────────────────────────
 
       // ─── restore FP, LR, X8, X2, X0 & X1 ──────────────────────
-      "ldp     x29,  x30,  [sp, #32]\n\t" // restore FP & LR
-      "ldp     x8,   x1,   [sp, #16]\n\t" // restore X8 & X2
-      "ldp     x3,   x2,   [sp, #0]\n\t"  // restore X0 & X1
-      "add     sp,   sp,    #48\n\t"      // deallocate frame
+      "ldp x29, x30,    [sp, #144]\n\t"
+      "ldp     x1, x17,  [sp, #128]\n\t"
+      // "ldp     x14, x15, [sp, #112]\n\t"
+      // "ldp     x12, x13, [sp, #96]\n\t"
+      // "ldp     x10, x11, [sp, #80]\n\t"
+      "ldp     x8,  x9,  [sp, #64]\n\t"
+      // "ldp     x6,  x7,  [sp, #48]\n\t"
+      // "ldp     x4,  x5,  [sp, #32]\n\t"
+      // "ldp     x2,  x3,  [sp, #16]\n\t"
+      "add     sp, sp,        #160\n\t"
 
       : "=r"(local_stats) // local_stats ← X16 - register clobbered
       :
-      : "x0", "memory");
+      : "memory");
+  // print_regs();
 
   if (!local_stats->init) {
     local_stats->init = 1;
-    asm volatile("sub     sp, sp,    #48\n\t" // allocate space on stack for reg
-                                              // who is not dead yet
-                 "stp     x9,   x10,   [sp, #0]\n\t"
-                 "stp     x11,   x12,   [sp, #16]\n\t"
-                 "stp     x15,  x16,  [sp, #32]\n\t"
 
-                 "stp x29, x30, [sp, #-16]!\n\t"
-                 "bl init_perf_util_helper\n\t"
-                 "ldp     x15,  x16,  [sp, #32]\n\t"
-                 "ldp     x11,   x12,   [sp, #16]\n\t"
-                 "ldp     x9,   x10,   [sp, #0]\n\t"
-                 "add     sp,   sp,    #48\n\t");
+    // set_regs();
+    asm volatile(
+        // "sub     sp, sp,    #48\n\t"           // allocate space on stack for
+        // reg who is not dead yet "stp     x9,   x10,   [sp, #0]\n\t" "stp x11,
+        // x12,   [sp, #16]\n\t" "stp     x15,  x16,  [sp, #32]\n\t"
+
+        "stp x29, x30, [sp, #-16]!\n\t"
+        "bl init_perf_util_helper\n\t"
+        "ldp x29, x30, [sp], #16\n\t"
+
+        // "ldp     x15,  x16,  [sp, #32]\n\t"
+        // "ldp     x11,   x12,   [sp, #16]\n\t"
+        // "ldp     x9,   x10,   [sp, #0]\n\t"
+        // "add     sp,   sp,    #48\n\t"
+    );
+    // print_regs();
   }
 
   // if (!configs.pervasive && ((ProfileData->CallCount >= configs.nsamples) ||
   // (ProfileData->DisabledFlag) || (configs.max_samples &&
   // configs.total_sample_count >= configs.max_samples))) {
-  if (false) {
-    void *return_address;
-    asm volatile("mov %0, lr" : "=r"(return_address));
-
-    uintptr_t target_addr = (uintptr_t)return_address - 44;
-    uint32_t *inst_ptr = (uint32_t *)target_addr;
-    // Self-disable instrumentation
-    *inst_ptr = 0x1400000E; // b +14 instructions
-    ProfileData->DisabledFlag = 1;
-    // asm volatile("isb");
-  } else {
-
-    configs.total_sample_count++;
-    ProfileData->CallCount += 1;
-
-    local_stats->data[local_stats->size].source_location = CodeLocationID;
-
+  {
+    register Data *data asm("x8") = &(local_stats->data[local_stats->size]);
+    data->source_location = CodeLocationID;
     // access PMU counter
-    int64_t value;
-    // 5 captures perf_event set-up after emperical experiment on realworkload
-    // asm volatile("isb");
-    switch (configs.PMU_index) {
-    case 0:
-      asm volatile("mrs %0, pmevcntr0_el0" : "=r"(value));
-      break;
-    case 1:
-      asm volatile("mrs %0, pmevcntr1_el0" : "=r"(value));
-      break;
-    case 2:
-      asm volatile("mrs %0, pmevcntr2_el0" : "=r"(value));
-      break;
-    case 3:
-      asm volatile("mrs %0, pmevcntr3_el0" : "=r"(value));
-      break;
-    case 4:
-      asm volatile("mrs %0, pmevcntr4_el0" : "=r"(value));
-      break;
-    case 5:
-      asm volatile("mrs %0, pmevcntr5_el0" : "=r"(value));
-      break;
-    }
-    // asm volatile("isb");
-    local_stats->data[local_stats->size++].pmu_value = value;
-
-    if (local_stats->size >= configs.buffer_size) {
-      int size = local_stats->size;
-      // Reset
-      local_stats->size = 0;
-      // dump_data_array(stats.data, stats.size);
-      asm volatile("mov x0, %0\n\t"
-                   "mov x1, %1\n\t"
-                   "stp x29, x30, [sp, #-16]!\n\t"
-                   "bl dump_data_array_helper\n\t"
-                   :
-                   : "r"(local_stats), "r"(size)
-                   : "x0", "x1");
-      return NULL;
-    }
+    register int64_t value asm("x0");
+    asm volatile("isb \n\t"
+                 // asm volatile(
+                 "mrs %0, pmevcntr5_el0"
+                 : "=r"(value));
+    // ld x0 [data, 2]
+    data->pmu_value = value;
   }
 
+  {
+    register int max_size asm("w0") = MAX_DATA_SIZE;
+    asm volatile("ldr w1, [%0]  \n"
+                 "add w1, w1, #1\n"
+                 "cmp w1, %w1   \n"
+                 "b.ge 2f       \n"
+                 "str w1, [%0]  \n"
+                 "b 3f          \n"
+                 "2: \n"
+                 "str wzr, [%0]  \n"
+                 :
+                 : "r"(&(local_stats->size)), "r"(max_size)
+                 : "cc", "memory"
+
+    );
+  }
+
+  // dump_data_array(stats.data, stats.size);
+  // set_regs();
+  asm volatile("mov x0, %0\n\t"
+               //  "mov w1, %1"
+               "stp x29, x30, [sp, #-16]!\n\t"
+               "bl dump_data_array_helper\n\t"
+               "ldp x29, x30, [sp], #16\n\t"
+               :
+               : "r"(local_stats)
+               : "x0", "w1");
+  // print_regs();
+  asm volatile("3: \n");
   return NULL;
 }
-
 // Blink's tracing function (instrumented at function exit)
 // WARNING: Be careful modifying this code, it is tailored to only use registers
 // x0,x1,x8-x16 to reduce overhead. Using any more registers without saving them
 // can cause stack corruption or unexpected behaviour
 void *__custom_instrumentation_exit(ProfileData_t *ProfileData,
                                     uint64_t CodeLocationID) {
-
-  if (!enable_global) {
-    return NULL;
-  }
-
-  int64_t value asm("x9");
-  // 5 captures perf_event set-up after emperical experiment on realworkload
-  // asm volatile("isb");
-  switch (configs.PMU_index) {
-  case 0:
-    asm volatile("mrs %0, pmevcntr0_el0" : "=r"(value));
-    break;
-  case 1:
-    asm volatile("mrs %0, pmevcntr1_el0" : "=r"(value));
-    break;
-  case 2:
-    asm volatile("mrs %0, pmevcntr2_el0" : "=r"(value));
-    break;
-  case 3:
-    asm volatile("mrs %0, pmevcntr3_el0" : "=r"(value));
-    break;
-  case 4:
-    asm volatile("mrs %0, pmevcntr4_el0" : "=r"(value));
-    break;
-  case 5:
-    asm volatile("mrs %0, pmevcntr5_el0" : "=r"(value));
-    break;
-  }
-  // asm volatile("isb");
-
-  // hoist emutls by caching thread local pointer in a register
-  register PMUStats *local_stats asm("x16");
-
-  asm volatile(
-      // ─── compute &__emutls_v.stats into X16 ───────────────────
-      "adrp    x0, __emutls_v.stats\n\t"
-      "add     x0, x0, :lo12:__emutls_v.stats\n\t"
-
-      // ─── save X0, X1, X8, X2, FP (X29) and LR (X30) ───────────
-      "sub     sp, sp,    #64\n\t"        // allocate 48 bytes
-      "stp     x3,   x2,   [sp, #0]\n\t"  // save X0 & X1
-      "stp     x8,   x1,   [sp, #16]\n\t" // save X8 & X2
-      "stp     x29,  x30,  [sp, #32]\n\t" // save FP & LR
-      "stp     x9,  x10,  [sp, #48]\n\t"  // save FP & LR
-
-      // ─── call the TLS helper ─────────────────────────────────
-      "bl      __emutls_get_address\n\t"
-      "mov     x16, x0\n\t" // capture return into X16
-
-      // ─── restore FP, LR, and X8 ───────────────────────────────
-
-      // ─── restore FP, LR, X8, X2, X0 & X1 ──────────────────────
-      "ldp     x9,  x10,  [sp, #48]\n\t"  // restore FP & LR
-      "ldp     x29,  x30,  [sp, #32]\n\t" // restore FP & LR
-      "ldp     x8,   x1,   [sp, #16]\n\t" // restore X8 & X2
-      "ldp     x3,   x2,   [sp, #0]\n\t"  // restore X0 & X1
-      "add     sp,   sp,    #64\n\t"      // deallocate frame
-
-      : "=r"(local_stats) // local_stats ← X16 - register clobbered
-      :
-      : "x0", "memory");
-
-  if (!configs.pervasive &&
-      ((ProfileData->CallCount >= configs.nsamples) ||
-       (ProfileData->DisabledFlag) ||
-       (configs.max_samples &&
-        configs.total_sample_count >= configs.max_samples))) {
-    void *return_address;
-    asm volatile("mov %0, lr" : "=r"(return_address));
-
-    uintptr_t target_addr = (uintptr_t)return_address - 44;
-    uint32_t *inst_ptr = (uint32_t *)target_addr;
-    // Self-disable instrumentation
-    *inst_ptr = 0x1400000E; // b +14 instructions
-    ProfileData->DisabledFlag = 1;
-    // asm volatile("isb");
-  } else {
-    local_stats->data[local_stats->size].source_location = CodeLocationID;
-
-    // access PMU counter
-    local_stats->data[local_stats->size++].pmu_value = value;
-
-    configs.total_sample_count++;
-    ProfileData->CallCount += 1;
-
-    if (local_stats->size >= configs.buffer_size) {
-      int size = local_stats->size;
-      // Reset
-      local_stats->size = 0;
-      // dump_data_array(stats.data, stats.size);
-      // x29 and x30 are fp (base of custom_instrument), lr (for
-      // custom_instrument_exit's parents) saved on the stack for some reason
-      // then we go to dump_data_array_helper (x30 is rewritten now as
-      // custom_instrument_exit + 4) in dump_data_array_helper, everystate is
-      // saved so on return, dump_data_array will restore the the state
-      asm volatile("mov x0, %0\n\t"
-                   "mov x1, %1\n\t"
-                   "stp x29, x30, [sp, #-16]!\n\t"
-                   "bl dump_data_array_helper\n\t"
-                   :
-                   : "r"(local_stats), "r"(size)
-                   : "x0", "x1");
-      return NULL;
-    }
-  }
-
   return NULL;
 }
 
