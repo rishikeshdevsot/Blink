@@ -42,6 +42,75 @@ BlinkConfigs _configs = {
     // clang-format on
 };
 
+void print_regs(void) {
+  uint64_t r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15,
+      r16, r17;
+
+  asm volatile("mov %0, x1\n\t"
+               "mov %1, x2\n\t"
+               "mov %2, x3\n\t"
+               "mov %3, x4\n\t"
+               "mov %4, x5\n\t"
+               "mov %5, x6\n\t"
+               "mov %6, x7\n\t"
+               "mov %7, x8\n\t"
+               "mov %8, x9\n\t"
+               "mov %9, x10\n\t"
+               "mov %10, x11\n\t"
+               "mov %11, x12\n\t"
+               "mov %12, x13\n\t"
+               "mov %13, x14\n\t"
+               "mov %14, x15\n\t"
+               "mov %15, x16\n\t"
+               "mov %16, x17\n\t"
+               : "=r"(r1), "=r"(r2), "=r"(r3), "=r"(r4), "=r"(r5), "=r"(r6),
+                 "=r"(r7), "=r"(r8), "=r"(r9), "=r"(r10), "=r"(r11), "=r"(r12),
+                 "=r"(r13), "=r"(r14), "=r"(r15), "=r"(r16), "=r"(r17)
+               :
+               :);
+
+  printf("x1  = 0x%016llx\n", (unsigned long long)r1);
+  printf("x2  = 0x%016llx\n", (unsigned long long)r2);
+  printf("x3  = 0x%016llx\n", (unsigned long long)r3);
+  printf("x4  = 0x%016llx\n", (unsigned long long)r4);
+  printf("x5  = 0x%016llx\n", (unsigned long long)r5);
+  printf("x6  = 0x%016llx\n", (unsigned long long)r6);
+  printf("x7  = 0x%016llx\n", (unsigned long long)r7);
+  printf("x8  = 0x%016llx\n", (unsigned long long)r8);
+  printf("x9  = 0x%016llx\n", (unsigned long long)r9);
+  printf("x10 = 0x%016llx\n", (unsigned long long)r10);
+  printf("x11 = 0x%016llx\n", (unsigned long long)r11);
+  printf("x12 = 0x%016llx\n", (unsigned long long)r12);
+  printf("x13 = 0x%016llx\n", (unsigned long long)r13);
+  printf("x14 = 0x%016llx\n", (unsigned long long)r14);
+  printf("x15 = 0x%016llx\n", (unsigned long long)r15);
+  printf("x16 = 0x%016llx\n", (unsigned long long)r16);
+  printf("x17 = 0x%016llx\n", (unsigned long long)r17);
+}
+
+void set_regs(void) {
+  asm volatile("mov x1,  #0x11\n\t"
+               "mov x2,  #0x22\n\t"
+               "mov x3,  #0x33\n\t"
+               "mov x4,  #0x44\n\t"
+               "mov x5,  #0x55\n\t"
+               "mov x6,  #0x66\n\t"
+               "mov x7,  #0x77\n\t"
+               "mov x8,  #0x88\n\t"
+               "mov x9,  #0x99\n\t"
+               "mov x10, #0xAA\n\t"
+               "mov x11, #0xBB\n\t"
+               "mov x12, #0xCC\n\t"
+               "mov x13, #0xDD\n\t"
+               "mov x14, #0xEE\n\t"
+               "mov x15, #0xFF\n\t"
+               "mov x16, #0x1234\n\t"
+               "mov x17, #0x5678\n\t"
+               :
+               :
+               :);
+}
+
 void DumpBlinkConfigs(const char *path, const BlinkConfigs *c) {
   FILE *f = fopen(path, "w");
   if (!f) {
@@ -522,7 +591,6 @@ void init_perf_util() {
 // can cause stack corruption or unexpected behaviour
 void *__custom_instrumentation(ProfileData_t *ProfileData,
                                uint64_t CodeLocationID) {
-
   asm volatile("adrp  x16, enable_global\n"
                "ldr   w16, [x16, #:lo12:enable_global]\n"
                "cmp   w16, #0\n" // compare with zero
@@ -533,48 +601,67 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
   // hoist emutls by caching thread local pointer in a register
   register PMUStats *local_stats asm("x16");
 
+  // set_regs();
   asm volatile(
       // ─── compute &__emutls_v.stats into X16 ───────────────────
       "adrp    x0, __emutls_v.stats\n\t"
       "add     x0, x0, :lo12:__emutls_v.stats\n\t"
 
       // ─── save X0, X1, X8, X2, FP (X29) and LR (X30) ───────────
-      "sub     sp, sp,    #64\n\t"        // allocate 48 bytes
-      "stp     x3,   x2,   [sp, #0]\n\t"  // save X0 & X1
-      "stp     x8,   x1,   [sp, #16]\n\t" // save X8 & X2
-      "stp     x29,  x30,  [sp, #32]\n\t" // save FP & LR
-      "stp     x9,  x10,  [sp, #48]\n\t"  // save FP & LR
+      "sub     sp, sp,    #160   \n\t" // allocate 48 bytes
+      // "stp     x2,  x3,  [sp, #16]\n\t"
+      // "stp     x4,  x5,  [sp, #32]\n\t"
+      // "stp     x6,  x7,  [sp, #48]\n\t"
+      "stp     x8,  x9,  [sp, #64]\n\t"
+      // "stp     x10, x11, [sp, #80]\n\t"
+      // "stp     x12, x13, [sp, #96]\n\t"
+      // "stp     x14, x15, [sp, #112]\n\t"
+      "stp     x1, x17, [sp, #128]\n\t"
+      "stp x29, x30,    [sp, #144]\n\t"
+
       // ─── call the TLS helper ─────────────────────────────────
       "bl      __emutls_get_address\n\t"
+      // use x8 x0 x16 x17
       "mov     x16, x0\n\t" // capture return into X16
 
       // ─── restore FP, LR, and X8 ───────────────────────────────
 
       // ─── restore FP, LR, X8, X2, X0 & X1 ──────────────────────
-      "ldp     x9,  x10,  [sp, #48]\n\t"  // save FP & LR
-      "ldp     x29,  x30,  [sp, #32]\n\t" // restore FP & LR
-      "ldp     x8,   x1,   [sp, #16]\n\t" // restore X8 & X2
-      "ldp     x3,   x2,   [sp, #0]\n\t"  // restore X0 & X1
-      "add     sp,   sp,    #64\n\t"      // deallocate frame
+      "ldp x29, x30,    [sp, #144]\n\t"
+      "ldp     x1, x17,  [sp, #128]\n\t"
+      // "ldp     x14, x15, [sp, #112]\n\t"
+      // "ldp     x12, x13, [sp, #96]\n\t"
+      // "ldp     x10, x11, [sp, #80]\n\t"
+      "ldp     x8,  x9,  [sp, #64]\n\t"
+      // "ldp     x6,  x7,  [sp, #48]\n\t"
+      // "ldp     x4,  x5,  [sp, #32]\n\t"
+      // "ldp     x2,  x3,  [sp, #16]\n\t"
+      "add     sp, sp,        #160\n\t"
 
       : "=r"(local_stats) // local_stats ← X16 - register clobbered
       :
       : "memory");
+  // print_regs();
 
   if (!local_stats->init) {
     local_stats->init = 1;
-    asm volatile("sub     sp, sp,    #48\n\t" // allocate space on stack for reg
-                                              // who is not dead yet
-                 "stp     x9,   x10,   [sp, #0]\n\t"
-                 "stp     x11,   x12,   [sp, #16]\n\t"
-                 "stp     x15,  x16,  [sp, #32]\n\t"
 
-                 "stp x29, x30, [sp, #-16]!\n\t"
-                 "bl init_perf_util_helper\n\t"
-                 "ldp     x15,  x16,  [sp, #32]\n\t"
-                 "ldp     x11,   x12,   [sp, #16]\n\t"
-                 "ldp     x9,   x10,   [sp, #0]\n\t"
-                 "add     sp,   sp,    #48\n\t");
+    // set_regs();
+    asm volatile(
+        // "sub     sp, sp,    #48\n\t"           // allocate space on stack for
+        // reg who is not dead yet "stp     x9,   x10,   [sp, #0]\n\t" "stp x11,
+        // x12,   [sp, #16]\n\t" "stp     x15,  x16,  [sp, #32]\n\t"
+
+        "stp x29, x30, [sp, #-16]!\n\t"
+        "bl init_perf_util_helper\n\t"
+        "ldp x29, x30, [sp], #16\n\t"
+
+        // "ldp     x15,  x16,  [sp, #32]\n\t"
+        // "ldp     x11,   x12,   [sp, #16]\n\t"
+        // "ldp     x9,   x10,   [sp, #0]\n\t"
+        // "add     sp,   sp,    #48\n\t"
+    );
+    // print_regs();
   }
 
   // if (!configs.pervasive && ((ProfileData->CallCount >= configs.nsamples) ||
@@ -606,14 +693,18 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
 
     );
   }
+
   // dump_data_array(stats.data, stats.size);
+  // set_regs();
   asm volatile("mov x0, %0\n\t"
                //  "mov w1, %1"
                "stp x29, x30, [sp, #-16]!\n\t"
                "bl dump_data_array_helper\n\t"
+               "ldp x29, x30, [sp], #16\n\t"
                :
                : "r"(local_stats)
                : "x0", "w1");
+  // print_regs();
   asm volatile("3: \n");
   return NULL;
 }
@@ -634,48 +725,67 @@ void *__custom_instrumentation_exit(ProfileData_t *ProfileData,
   // hoist emutls by caching thread local pointer in a register
   register PMUStats *local_stats asm("x16");
 
+  // set_regs();
   asm volatile(
       // ─── compute &__emutls_v.stats into X16 ───────────────────
       "adrp    x0, __emutls_v.stats\n\t"
       "add     x0, x0, :lo12:__emutls_v.stats\n\t"
 
       // ─── save X0, X1, X8, X2, FP (X29) and LR (X30) ───────────
-      "sub     sp, sp,    #64\n\t"        // allocate 48 bytes
-      "stp     x3,   x2,   [sp, #0]\n\t"  // save X0 & X1
-      "stp     x8,   x1,   [sp, #16]\n\t" // save X8 & X2
-      "stp     x29,  x30,  [sp, #32]\n\t" // save FP & LR
-      "stp     x9,  x10,  [sp, #48]\n\t"  // save FP & LR
+      "sub     sp, sp,    #160   \n\t" // allocate 48 bytes
+      // "stp     x2,  x3,  [sp, #16]\n\t"
+      // "stp     x4,  x5,  [sp, #32]\n\t"
+      // "stp     x6,  x7,  [sp, #48]\n\t"
+      "stp     x8,  x9,  [sp, #64]\n\t"
+      // "stp     x10, x11, [sp, #80]\n\t"
+      // "stp     x12, x13, [sp, #96]\n\t"
+      // "stp     x14, x15, [sp, #112]\n\t"
+      "stp     x1, x17, [sp, #128]\n\t"
+      "stp x29, x30,    [sp, #144]\n\t"
+
       // ─── call the TLS helper ─────────────────────────────────
       "bl      __emutls_get_address\n\t"
+      // use x8 x0 x16 x17
       "mov     x16, x0\n\t" // capture return into X16
 
       // ─── restore FP, LR, and X8 ───────────────────────────────
 
       // ─── restore FP, LR, X8, X2, X0 & X1 ──────────────────────
-      "ldp     x9,  x10,  [sp, #48]\n\t"  // save FP & LR
-      "ldp     x29,  x30,  [sp, #32]\n\t" // restore FP & LR
-      "ldp     x8,   x1,   [sp, #16]\n\t" // restore X8 & X2
-      "ldp     x3,   x2,   [sp, #0]\n\t"  // restore X0 & X1
-      "add     sp,   sp,    #64\n\t"      // deallocate frame
+      "ldp x29, x30,    [sp, #144]\n\t"
+      "ldp     x1, x17,  [sp, #128]\n\t"
+      // "ldp     x14, x15, [sp, #112]\n\t"
+      // "ldp     x12, x13, [sp, #96]\n\t"
+      // "ldp     x10, x11, [sp, #80]\n\t"
+      "ldp     x8,  x9,  [sp, #64]\n\t"
+      // "ldp     x6,  x7,  [sp, #48]\n\t"
+      // "ldp     x4,  x5,  [sp, #32]\n\t"
+      // "ldp     x2,  x3,  [sp, #16]\n\t"
+      "add     sp, sp,        #160\n\t"
 
       : "=r"(local_stats) // local_stats ← X16 - register clobbered
       :
       : "memory");
+  // print_regs();
 
   if (!local_stats->init) {
     local_stats->init = 1;
-    asm volatile("sub     sp, sp,    #48\n\t" // allocate space on stack for reg
-                                              // who is not dead yet
-                 "stp     x9,   x10,   [sp, #0]\n\t"
-                 "stp     x11,   x12,   [sp, #16]\n\t"
-                 "stp     x15,  x16,  [sp, #32]\n\t"
 
-                 "stp x29, x30, [sp, #-16]!\n\t"
-                 "bl init_perf_util_helper\n\t"
-                 "ldp     x15,  x16,  [sp, #32]\n\t"
-                 "ldp     x11,   x12,   [sp, #16]\n\t"
-                 "ldp     x9,   x10,   [sp, #0]\n\t"
-                 "add     sp,   sp,    #48\n\t");
+    // set_regs();
+    asm volatile(
+        // "sub     sp, sp,    #48\n\t"           // allocate space on stack for
+        // reg who is not dead yet "stp     x9,   x10,   [sp, #0]\n\t" "stp x11,
+        // x12,   [sp, #16]\n\t" "stp     x15,  x16,  [sp, #32]\n\t"
+
+        "stp x29, x30, [sp, #-16]!\n\t"
+        "bl init_perf_util_helper\n\t"
+        "ldp x29, x30, [sp], #16\n\t"
+
+        // "ldp     x15,  x16,  [sp, #32]\n\t"
+        // "ldp     x11,   x12,   [sp, #16]\n\t"
+        // "ldp     x9,   x10,   [sp, #0]\n\t"
+        // "add     sp,   sp,    #48\n\t"
+    );
+    // print_regs();
   }
 
   // if (!configs.pervasive && ((ProfileData->CallCount >= configs.nsamples) ||
@@ -707,14 +817,18 @@ void *__custom_instrumentation_exit(ProfileData_t *ProfileData,
 
     );
   }
+
   // dump_data_array(stats.data, stats.size);
+  // set_regs();
   asm volatile("mov x0, %0\n\t"
                //  "mov w1, %1"
                "stp x29, x30, [sp, #-16]!\n\t"
                "bl dump_data_array_helper\n\t"
+               "ldp x29, x30, [sp], #16\n\t"
                :
                : "r"(local_stats)
                : "x0", "w1");
+  // print_regs();
   asm volatile("3: \n");
   return NULL;
 }
