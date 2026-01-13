@@ -54,7 +54,7 @@ cl::opt<bool> MIRInstrumentation::MIREntryOnly(
     cl::desc("Instrument entry blocks of functions only"));
 
 cl::opt<std::string> MIRInstrumentation::BlinkWhitelistFile(
-    "blink-whitelist-file", cl::Optional,
+    "blink-whitelist-file", llvm::cl::Optional,
     llvm::cl::desc("Path to whitelist of mangled function names"),
     llvm::cl::value_desc("filename"));
 cl::list<std::string> MIRInstrumentation::BlinkWhitelistFunctions(
@@ -274,7 +274,9 @@ MachineInstr *MIRInstrumentation::bbContainsCall(MachineBasicBlock &MBB,
   // }
 
   for (auto MI = MBB.begin(), ME = MBB.end(); MI != ME; ++MI) {
-    if (!MI->isCall()) {
+    // also skip tail return, which otherwise would be treated as a call
+
+    if (!MI->isCall() || MI->isReturn()) {
       continue;
     }
     StringRef CalleeName = "";
@@ -308,7 +310,7 @@ MachineInstr *MIRInstrumentation::bbContainsCall(MachineBasicBlock &MBB,
         .addExternalSymbol(
             "__custom_instrumentation") // Name of tracing function
         .addImm(
-            1) // Flag to specify whether instrumentation is for an exit block
+            0) // Flag to specify whether instrumentation is for an exit block
         .addImm(BlinkMode == "dynamic");
   }
   return nullptr;
@@ -403,7 +405,7 @@ bool MIRInstrumentation::runOnMachineFunction(MachineFunction &MF) {
               .addImm(UniqueCodeID)
               .addExternalSymbol(
                   "__custom_instrumentation") // Name of tracing function
-              .addImm(1) // Flag to specify whether instrumentation is for an
+              .addImm(0) // Flag to specify whether instrumentation is for an
                          // exit block
               .addImm(BlinkMode == "dynamic");
           addCodeInfoToMap(MF, DLReturn, UniqueCodeID);
