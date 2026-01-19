@@ -567,20 +567,20 @@ void init_perf_util() {
   ioctl(fd, PERF_EVENT_IOC_RESET, 0);  // Reset the counter
   ioctl(fd, PERF_EVENT_IOC_ENABLE, 0); // Start counting immediately
 
-  uint64_t after;
-  asm volatile("mrs %0, pmcntenset_el0" : "=r"(after));
+  // uint64_t after;
+  // asm volatile("mrs %0, pmcntenset_el0" : "=r"(after));
 
-  uint64_t diff = before ^ after;
-  if (diff == 0) {
-    // use pmevcntr5_el0 as default
-    stats.pmu_index = 5;
-  } else {
-    for (int bit = 0; bit < 8; ++bit) {
-      if (diff & (1ULL << bit)) {
-        stats.pmu_index = bit;
-      }
-    }
-  }
+  // uint64_t diff = before ^ after;
+  // if (diff == 0) {
+  //     // use pmevcntr5_el0 as default
+  //     stats.pmu_index = 5;
+  // } else {
+  //     for (int bit = 0; bit < 8; ++bit) {
+  //         if (diff & (1ULL << bit)) {
+  //           stats.pmu_index = bit;
+  //         }
+  //     }
+  // }
 
   stats.init = 1;
 }
@@ -672,6 +672,7 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
     data->source_location = CodeLocationID;
     // access PMU counter
     register int64_t value asm("x0");
+    asm volatile("isb");
     asm volatile("mrs %0, pmevcntr5_el0" : "=r"(value));
     // ld x0 [data, 2]
     data->pmu_value = value;
