@@ -1,4 +1,4 @@
-; RUN: llc < %s -enable-machine-instrumentation -enable-machine-call-graph -mtriple=arm64-linux -blink-mode=dynamic -blink-blacklist-functions=_Z3fooi | FileCheck %s --check-prefixes CHECK
+q; RUN: llc < %s -enable-machine-instrumentation -enable-machine-call-graph -mtriple=arm64-linux -blink-mode=dynamic -blink-blacklist-functions=_Z3fooi | FileCheck %s --check-prefixes CHECK
 
 @global = local_unnamed_addr global i32 4, align 4
 

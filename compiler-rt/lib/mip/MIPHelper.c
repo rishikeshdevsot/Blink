@@ -559,8 +559,8 @@ void init_perf_util() {
   pe.exclude_kernel = 1; // Exclude kernel events
   pe.disabled = 1;       // Disable counter initially
 
-  uint64_t before;
-  asm volatile("mrs %0, pmcntenset_el0" : "=r"(before));
+  // uint64_t before;
+  // asm volatile("mrs %0, pmcntenset_el0" : "=r"(before));
 
   int fd = perf_event_open_syscall(&pe, 0, -1, -1, 0);
 
@@ -573,7 +573,7 @@ void init_perf_util() {
   // uint64_t diff = before ^ after;
   // if (diff == 0) {
   //     // use pmevcntr5_el0 as default
-  //     stats.pmu_index = 5;
+  stats.pmu_index = 5;
   // } else {
   //     for (int bit = 0; bit < 8; ++bit) {
   //         if (diff & (1ULL << bit)) {
@@ -672,8 +672,10 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
     data->source_location = CodeLocationID;
     // access PMU counter
     register int64_t value asm("x0");
-    asm volatile("isb");
-    asm volatile("mrs %0, pmevcntr5_el0" : "=r"(value));
+    asm volatile("isb \n\t"
+                 // asm volatile(
+                 "mrs %0, pmevcntr5_el0"
+                 : "=r"(value));
     // ld x0 [data, 2]
     data->pmu_value = value;
   }
