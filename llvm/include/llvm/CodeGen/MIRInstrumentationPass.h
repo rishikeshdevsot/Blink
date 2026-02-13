@@ -54,19 +54,20 @@ private:
   }
 
   static std::atomic<unsigned> UniqueCodeLocationID;
+  static std::atomic<unsigned> UniqueFunctionID;
   DenseMap<unsigned, SmallVector<std::string, 8>> MIRCodeLocationMapping;
   StringRef ModuleFileName;
 
   void addCodeInfoToMap(MachineFunction &MF, const DebugLoc &DL,
-                        unsigned UniqueID);
+                        unsigned UniqueCodeID, unsigned EntryCodeID);
   bool doInitialization(Module &M) override;
   bool doFinalization(Module &M) override;
   bool shouldInstrumentMachineFunction(const MachineFunction &MF) const;
   bool runOnMachineFunction(MachineFunction &MF) override;
   bool bbContainsPthreadExit(MachineBasicBlock &MBB);
   MachineInstr *bbContainsReturn(MachineBasicBlock &MBB);
-  MachineInstr *bbContainsCall(MachineBasicBlock &MBB,
-                               const TargetInstrInfo &TII);
+  MachineInstr *instrument_callees(MachineFunction &MF, MachineBasicBlock &MBB,
+                                   const TargetInstrInfo &TII);
   uint32_t getControlFlowGraphSignature(
       SmallVectorImpl<MachineBasicBlock *> &MBBs) const;
   void getMachineBasicBlocks(MachineFunction &MF,

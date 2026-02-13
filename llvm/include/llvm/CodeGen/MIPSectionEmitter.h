@@ -48,13 +48,13 @@ private:
     MCSymbol *RawProfileSymbol;
     uint32_t ControlFlowGraphSignature;
     uint32_t ExitBasicBlockCount;
-
     // A map from Machine Basic Block IDs to MBBInfo.
     DenseMap<uint32_t, MBBInfo> BasicBlockInfos;
+    // uint32_t FunctionID; // an unique id
   };
 
   void emitMIPHeader(MachineProfile::MIPFileType FileType);
-  void emitMIPFunctionData(MFInfo &Info);
+  void emitMIPFunctionData(MFInfo &Info, unsigned int fID);
   void emitMIPFunctionInfo(MFInfo &Info);
   MCSymbol *getMIPSectionBeginSymbol(Twine MIPSectionName);
   void emitLinkageAndVisibility(MCSymbol *Sym);

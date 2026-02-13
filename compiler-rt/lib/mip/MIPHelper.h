@@ -51,7 +51,7 @@ int RewriteCallback(struct dl_phdr_info *info, size_t size, void *data);
 bool MakeCodePagesWriteable();
 
 typedef struct {
-  uint32_t CallCount;
+  uint32_t fID;
   uint32_t Timestamp;
   int64_t OffsetToFunction;
   uint32_t DisabledFlag;
@@ -97,6 +97,7 @@ void DumpBlinkConfigs(const char *path, const BlinkConfigs *c);
 void LoadAndDumpBlinkConfigs(void);
 
 #define MAX_DATA_SIZE 16384
+#define MAX_NUM_FUN 2048
 typedef struct {
   uint64_t source_location;
   uint64_t pmu_value;
@@ -107,6 +108,7 @@ typedef struct {
   int pmu_index;
   bool init;
   int dump_idx;
+  int count[MAX_NUM_FUN];
   Data data[MAX_DATA_SIZE];
 } PMUStats;
 
