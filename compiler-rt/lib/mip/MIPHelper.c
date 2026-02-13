@@ -297,7 +297,7 @@ void EnableAllInstrumentation() {
     EnableExitInstrumentation(FunctionAddress, ProfileData);
 
     // Reset invocation count
-    ProfileData->CallCount = 0;
+    // ProfileData->CallCount = 0;
 
     ProfileData->DisabledFlag = 0;
     MIPDataIndexer += SkipValNextFunction; // Move to the next function
@@ -318,7 +318,12 @@ void __llvm_mip_runtime_initialize(void) {
   // sigaction(SIGUSR1, &stopInstr, NULL);
 }
 
-void InitPMUStats(PMUStats *stats) { stats->size = 0; }
+void InitPMUStats(PMUStats *stats) {
+  stats->size = 0;
+  for (int i = 0; i < 100; i++) {
+    stats->count[i] = 0;
+  }
+}
 
 // zero‐initialized by default, but we override it here:
 _Thread_local PMUStats stats = {.size = 0,
@@ -389,21 +394,9 @@ bool MakeCodePagesWriteable() {
 void __llvm_dump_mip_profile(void) {
   LoadAndDumpBlinkConfigs();
   InitPMUStats(&stats);
-  if (false) {
-    // do nothing if lib is not provided/supported in dynamic mode
-    if (!MakeCodePagesWriteable()) {
-      return;
-    } else {
-      // here we are in dynamic mode with a rewritable library, initiating
-      // control thread for turning the instrumentation on
-      pthread_t ControlThread;
-      pthread_create(&ControlThread, NULL, ControlThreadFunction, NULL);
-    }
-  } else {
-    // if we are in regular mode, always turn on the instrumentation without
-    // triggering any disabling mechanism
-    configs.pervasive = 1;
-  }
+
+  pthread_t ControlThread;
+  pthread_create(&ControlThread, NULL, ControlThreadFunction, NULL);
 
   enable_global ^= 1;
 
@@ -442,19 +435,19 @@ int __llvm_dump_mip_profile_with_filename(const char *Filename) {
 void *
 __llvm_mip_call_counts_instrumentation_helper(ProfileData_t *ProfileData) {
   if (__llvm_mip_global_timestamp) {
-    if (ProfileData->CallCount == 0xFFFFFFFF) {
-      // This function is called for the first time.
-      ProfileData->CallCount = 1;
-      ProfileData->Timestamp = __llvm_mip_global_timestamp;
-      // Since the number of functions << 2^32, a saturating add is not
-      // necessary.
-      __llvm_mip_global_timestamp += 1;
-    } else {
-      // This is not the first time this function has been called.
-      uint32_t NewCallCount = ProfileData->CallCount + 1;
-      if (NewCallCount != 0xFFFFFFFF)
-        ProfileData->CallCount = NewCallCount;
-    }
+    // if (ProfileData->CallCount == 0xFFFFFFFF) {
+    // This function is called for the first time.
+    // ProfileData->CallCount = 1;
+    // ProfileData->Timestamp = __llvm_mip_global_timestamp;
+    // Since the number of functions << 2^32, a saturating add is not
+    // necessary.
+    // __llvm_mip_global_timestamp += 1;
+    // } else {
+    // This is not the first time this function has been called.
+    // uint32_t NewCallCount = ProfileData->CallCount + 1;
+    // if (NewCallCount != 0xFFFFFFFF)
+    //   ProfileData->CallCount = NewCallCount;
+    // }
   }
   return ProfileData;
 }
@@ -585,87 +578,55 @@ void init_perf_util() {
 // can cause stack corruption or unexpected behaviour
 void *__custom_instrumentation(ProfileData_t *ProfileData,
                                uint64_t CodeLocationID) {
-  asm volatile("adrp  x16, enable_global\n"
-               "ldr   w16, [x16, #:lo12:enable_global]\n"
-               "cmp   w16, #0\n" // compare with zero
-               "b.ne 1f\n"       // if enable_global != 0 → skip return
-               "b 3f          \n"
-               "1:");
+  // return NULL;
+  // __custom_instrumentation(NULL, 0);
+  if (!enable_global) {
+    return NULL;
+  }
+  register void *local_stats asm("x16") = &stats;
 
-  // hoist emutls by caching thread local pointer in a register
-  register PMUStats *local_stats asm("x16");
-
-  // set_regs();
-  asm volatile(
-      // ─── compute &__emutls_v.stats into X16 ───────────────────
-      "adrp    x0, __emutls_v.stats\n\t"
-      "add     x0, x0, :lo12:__emutls_v.stats\n\t"
-
-      // ─── save X0, X1, X8, X2, FP (X29) and LR (X30) ───────────
-      "sub     sp, sp,    #160   \n\t" // allocate 48 bytes
-      // "stp     x2,  x3,  [sp, #16]\n\t"
-      // "stp     x4,  x5,  [sp, #32]\n\t"
-      // "stp     x6,  x7,  [sp, #48]\n\t"
-      "stp     x8,  x9,  [sp, #64]\n\t"
-      // "stp     x10, x11, [sp, #80]\n\t"
-      // "stp     x12, x13, [sp, #96]\n\t"
-      // "stp     x14, x15, [sp, #112]\n\t"
-      "stp     x1, x17, [sp, #128]\n\t"
-      "stp x29, x30,    [sp, #144]\n\t"
-
-      // ─── call the TLS helper ─────────────────────────────────
-      "bl      __emutls_get_address\n\t"
-      // use x8 x0 x16 x17
-      "mov     x16, x0\n\t" // capture return into X16
-
-      // ─── restore FP, LR, and X8 ───────────────────────────────
-
-      // ─── restore FP, LR, X8, X2, X0 & X1 ──────────────────────
-      "ldp x29, x30,    [sp, #144]\n\t"
-      "ldp     x1, x17,  [sp, #128]\n\t"
-      // "ldp     x14, x15, [sp, #112]\n\t"
-      // "ldp     x12, x13, [sp, #96]\n\t"
-      // "ldp     x10, x11, [sp, #80]\n\t"
-      "ldp     x8,  x9,  [sp, #64]\n\t"
-      // "ldp     x6,  x7,  [sp, #48]\n\t"
-      // "ldp     x4,  x5,  [sp, #32]\n\t"
-      // "ldp     x2,  x3,  [sp, #16]\n\t"
-      "add     sp, sp,        #160\n\t"
-
-      : "=r"(local_stats) // local_stats ← X16 - register clobbered
-      :
-      : "memory");
-  // print_regs();
-
-  if (!local_stats->init) {
-    local_stats->init = 1;
-
-    // set_regs();
-    asm volatile(
-        // "sub     sp, sp,    #48\n\t"           // allocate space on stack for
-        // reg who is not dead yet "stp     x9,   x10,   [sp, #0]\n\t" "stp x11,
-        // x12,   [sp, #16]\n\t" "stp     x15,  x16,  [sp, #32]\n\t"
-
-        "stp x29, x30, [sp, #-16]!\n\t"
-        "bl init_perf_util_helper\n\t"
-        "ldp x29, x30, [sp], #16\n\t"
-
-        // "ldp     x15,  x16,  [sp, #32]\n\t"
-        // "ldp     x11,   x12,   [sp, #16]\n\t"
-        // "ldp     x9,   x10,   [sp, #0]\n\t"
-        // "add     sp,   sp,    #48\n\t"
-    );
+  if (!((PMUStats *)local_stats)->init) {
+    ((PMUStats *)local_stats)->init = 1;
+    asm volatile("bl init_perf_util_helper\n\t");
     // print_regs();
   }
 
   // if (!configs.pervasive && ((ProfileData->CallCount >= configs.nsamples) ||
   // (ProfileData->DisabledFlag) || (configs.max_samples &&
   // configs.total_sample_count >= configs.max_samples))) {
+
+  // if the disable flag is set:
+  // this means
+  // if (ProfileData->DisabledFlag) == 0
+
   {
-    register Data *data asm("x8") = &(local_stats->data[local_stats->size]);
+    int *pCount = ((PMUStats *)local_stats)->count + ProfileData->fID;
+    if (*pCount >= MAX_DATA_SIZE) {
+      ProfileData->DisabledFlag = true;
+    }
+    // printf("%d\n", ProfileData->fID);
+
+    if (ProfileData->DisabledFlag == true) {
+      // this could be at a different thread and at a different instrumentation
+      // spot
+      *pCount = 0;
+
+      return NULL;
+    }
+    // //     // uint64_t *ret;
+    // //     // asm("mov %0, lr" : "=r"(ret)); // return addr
+    // //     // *(ret - 11*4) = 0x12345; // rewrite with "b +13"
+    // //     return NULL;
+    // //   }
+    *pCount += 1;
+  }
+
+  {
+    Data *data =
+        &(((PMUStats *)local_stats)->data[((PMUStats *)local_stats)->size]);
     data->source_location = CodeLocationID;
     // access PMU counter
-    register int64_t value asm("x0");
+    int64_t value;
     asm volatile("isb \n\t"
                  // asm volatile(
                  "mrs %0, pmevcntr5_el0"
@@ -674,35 +635,43 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
     data->pmu_value = value;
   }
 
-  {
-    register int max_size asm("w0") = MAX_DATA_SIZE;
-    asm volatile("ldr w1, [%0]  \n"
-                 "add w1, w1, #1\n"
-                 "cmp w1, %w1   \n"
-                 "b.ge 2f       \n"
-                 "str w1, [%0]  \n"
-                 "b 3f          \n"
-                 "2: \n"
-                 "str wzr, [%0]  \n"
-                 :
-                 : "r"(&(local_stats->size)), "r"(max_size)
-                 : "cc", "memory"
-
-    );
+  if (++(((PMUStats *)local_stats)->size) < MAX_DATA_SIZE) {
+    return NULL;
   }
+  // {
+  //   register int max_size asm("w0") = MAX_DATA_SIZE;
+  //   asm volatile(
+  //     "ldr w1, [%0]  \n"
+  //     "add w1, w1, #1\n"
+  //     "cmp w1, %w1   \n"
+  //     "b.ge 2f       \n"
+  //     "str w1, [%0]  \n"
+  //     "b 3f          \n"
+  //     "2: \n"
+  //     "str wzr, [%0]  \n"
+  //     :
+  //     : "r"(&(local_stats->size)), "r"(max_size)
+  //     : "cc", "memory"
+
+  //   );
+  // }
 
   // dump_data_array(stats.data, stats.size);
   // set_regs();
-  asm volatile("mov x0, %0\n\t"
-               //  "mov w1, %1"
-               "stp x29, x30, [sp, #-16]!\n\t"
-               "bl dump_data_array_helper\n\t"
-               "ldp x29, x30, [sp], #16\n\t"
-               :
-               : "r"(local_stats)
-               : "x0", "w1");
+  dump_data_array_helper(((PMUStats *)local_stats),
+                         ((PMUStats *)local_stats)->size);
+  ((PMUStats *)local_stats)->size = 0;
+  // dump_data_array_helper(NULL, 0);
+  // asm volatile("mov x0, %0\n\t"
+  //              "mov w1, %1\n\t"
+  //               // "stp x29, x30, [sp, #-16]!\n\t"
+  //               "bl dump_data_array_helper\n\t"
+  //               // "ldp x29, x30, [sp], #16\n\t"
+  //               :
+  //               : "r" (local_stats->data), "r" (local_stats->size)
+  //               : "x0", "w1");
   // print_regs();
-  asm volatile("3: \n");
+  // asm volatile("3: \n");
   return NULL;
 }
 // Blink's tracing function (instrumented at function exit)

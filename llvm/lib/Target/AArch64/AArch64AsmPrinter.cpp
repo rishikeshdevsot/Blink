@@ -349,11 +349,11 @@ void AArch64AsmPrinter::LowerMIP_INSTRUMENTATION(const MachineInstr &MI) {
                                    .addReg(AArch64::X1)
                                    .addReg(AArch64::SP)
                                    .addImm(-2));
-  // stp x8, x16, [sp, #-16]!
+  // stp x16, x17, [sp, #-16]!
   EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::STPXpre)
                                    .addReg(AArch64::SP)
-                                   .addReg(AArch64::X8)
                                    .addReg(AArch64::X16)
+                                   .addReg(AArch64::X17)
                                    .addReg(AArch64::SP)
                                    .addImm(-2));
 
@@ -393,6 +393,22 @@ void AArch64AsmPrinter::LowerMIP_INSTRUMENTATION(const MachineInstr &MI) {
                                    .addOperand(CustomInstrSymbolPageOffsetMCO)
                                    .addImm(0));
 
+  // stp    x8, x9, [sp, #-16]!
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::STPXpre)
+                                   .addReg(AArch64::SP)
+                                   .addReg(AArch64::X8)
+                                   .addReg(AArch64::X9)
+                                   .addReg(AArch64::SP)
+                                   .addImm(-2));
+
+  // stp    x10, x11, [sp, #-16]!
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::STPXpre)
+                                   .addReg(AArch64::SP)
+                                   .addReg(AArch64::X10)
+                                   .addReg(AArch64::X11)
+                                   .addReg(AArch64::SP)
+                                   .addImm(-2));
+
   // stp    x29, x30, [sp, #-16]!
   EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::STPXpre)
                                    .addReg(AArch64::SP)
@@ -412,11 +428,28 @@ void AArch64AsmPrinter::LowerMIP_INSTRUMENTATION(const MachineInstr &MI) {
                                    .addReg(AArch64::LR)
                                    .addReg(AArch64::SP)
                                    .addImm(2));
-  // ldp x8, x16, sp, #16
+
+  // ldp x10, x11, sp, #16
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::LDPXpost)
+                                   .addReg(AArch64::SP)
+                                   .addReg(AArch64::X10)
+                                   .addReg(AArch64::X11)
+                                   .addReg(AArch64::SP)
+                                   .addImm(2));
+
+  // ldp x8, x9, sp, #16
   EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::LDPXpost)
                                    .addReg(AArch64::SP)
                                    .addReg(AArch64::X8)
+                                   .addReg(AArch64::X9)
+                                   .addReg(AArch64::SP)
+                                   .addImm(2));
+
+  // ldp x16, x17, sp, #16
+  EmitToStreamer(*OutStreamer, MCInstBuilder(AArch64::LDPXpost)
+                                   .addReg(AArch64::SP)
                                    .addReg(AArch64::X16)
+                                   .addReg(AArch64::X17)
                                    .addReg(AArch64::SP)
                                    .addImm(2));
   // ldp x0, x1, sp, #16

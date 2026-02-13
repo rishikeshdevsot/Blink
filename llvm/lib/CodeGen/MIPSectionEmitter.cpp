@@ -201,7 +201,7 @@ void MIPSectionEmitter::emitMIPHeader(MIPFileType FileType) {
   OS.AddBlankLine();
 }
 
-void MIPSectionEmitter::emitMIPFunctionData(MFInfo &Info) {
+void MIPSectionEmitter::emitMIPFunctionData(MFInfo &Info, unsigned int fID) {
   auto &OS = *AP.OutStreamer;
   auto &OutContext = OS.getContext();
   const auto &TT = OutContext.getTargetTriple();
@@ -242,8 +242,8 @@ void MIPSectionEmitter::emitMIPFunctionData(MFInfo &Info) {
     auto *ReferenceLabel = OutContext.createTempSymbol("ref");
     OS.emitLabel(ReferenceLabel);
 
-    // Invocation counter for the function
-    OS.emitIntValueInHex(0x00000000, 4);
+    // function ID
+    OS.emitIntValueInHex(fID, 4);
 
     // The following is used for printing a Function Order Sum/timestamp
     OS.emitIntValueInHex(0xFFFFFFFF, 4);
@@ -388,9 +388,9 @@ void MIPSectionEmitter::serializeToMIPRawSection() {
   }
 
   emitMIPHeader(MIP_FILE_TYPE_RAW);
-
+  unsigned int fID = 0;
   for (auto &Pair : FunctionInfos) {
-    emitMIPFunctionData(Pair.second);
+    emitMIPFunctionData(Pair.second, fID++);
   }
 }
 
