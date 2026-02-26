@@ -103,6 +103,7 @@ typedef struct {
   uint64_t pmu_value;
 } Data;
 
+// 2048 * 4 = 2048 * 4
 typedef struct {
   int size;
   int pmu_index;

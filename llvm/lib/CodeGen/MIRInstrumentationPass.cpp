@@ -370,6 +370,12 @@ bool MIRInstrumentation::runOnMachineFunction(MachineFunction &MF) {
 
   if (EnableMachineCallGraph) {
 
+    // instrument callees TODO add flag for enabling this feature
+    for (uint32_t BlockID = 0; BlockID < MBBs.size(); BlockID++) {
+      auto &MBB = *MBBs[BlockID];
+      instrument_callees(MF, MBB, TII);
+    }
+
     // Instrument entry
     BuildMI(EntryBlock, MBBI, DL,
             TII.get(TargetOpcode::MIP_INSTRUMENTATION))
@@ -382,12 +388,6 @@ bool MIRInstrumentation::runOnMachineFunction(MachineFunction &MF) {
         .addImm(BlinkMode == "dynamic");
 
     addCodeInfoToMap(MF, DL, EntryCodeID, 0); // 0 means it is an entry
-
-    // instrument callees TODO add flag for enabling this feature
-    for (uint32_t BlockID = 0; BlockID < MBBs.size(); BlockID++) {
-      auto &MBB = *MBBs[BlockID];
-      instrument_callees(MF, MBB, TII);
-    }
 
     if (!MIREntryOnly) {
       unsigned ExitBlockID = 0;
