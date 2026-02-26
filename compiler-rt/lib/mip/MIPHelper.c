@@ -592,6 +592,7 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
 
   asm volatile(
       "stp	x29, x30, [sp, #-16]! \n\t"
+      "stp  x8, x9, [sp, #-16]! \n\t"
       "adrp  x16, enable_global\n\t"
       "ldr   w16, [x16, #:lo12:enable_global]\n\t"
       "cbz   w16, done \n\t" // branch if enable_global == 0
@@ -665,9 +666,8 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
       "mov w1, w8\n\t"      // w8 stores the current size (already incremented)
       "bl dump_data_array_helper\n\t"
       "done: \n\t"
-      "ldp	x29, x30, [sp], #16 \n\t"
-
-  );
+      "ldp  x8, x9, [sp], #16 \n\t"
+      "ldp	x29, x30, [sp], #16 \n\t");
 }
 // Blink's tracing function (instrumented at function exit)
 // WARNING: Be careful modifying this code, it is tailored to only use registers
