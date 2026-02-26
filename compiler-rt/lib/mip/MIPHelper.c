@@ -476,7 +476,8 @@ void dump_data_array(PMUStats *stats, int size) {
   // 1) read thread ID from TPIDR_EL0
   // uintptr_t tid;
   // asm volatile("mrs %0, tpidr_el0" : "=r"(tid));
-  // printf("dump called with size = %d\n", size);
+  // printf("dump called  for stats %p with size = %d\n", stats, size);
+  // return;
   // if (size >= MAX_DATA_SIZE + 1) {
   // exit(0);
   // }
@@ -576,103 +577,90 @@ void init_perf_util() {
 // WARNING: Be careful modifying this code, it is tailored to only use registers
 // x0,x1,x8-x16 to reduce overhead. Using any more registers without saving them
 // can cause stack corruption or unexpected behaviour
+
 void *__custom_instrumentation(ProfileData_t *ProfileData,
                                uint64_t CodeLocationID) {
-  // return NULL;
-  // __custom_instrumentation(NULL, 0);
-  if (!enable_global) {
-    return NULL;
-  }
-  register void *local_stats asm("x16") = &stats;
+  // registers saved by callee
+  // x0 x1  x8 x9  x16 x17
 
-  if (!((PMUStats *)local_stats)->init) {
-    ((PMUStats *)local_stats)->init = 1;
-    asm volatile("bl init_perf_util_helper\n\t");
-    // print_regs();
-  }
+  asm volatile(
+      "stp	x29, x30, [sp, #-16]! \n\t"
+      "stp  x8, x9, [sp, #-16]! \n\t"
+      "adrp  x16, enable_global\n\t"
+      "ldr   w16, [x16, #:lo12:enable_global]\n\t"
+      "cbz   w16, done \n\t" // branch if enable_global == 0
 
-  // if (!configs.pervasive && ((ProfileData->CallCount >= configs.nsamples) ||
-  // (ProfileData->DisabledFlag) || (configs.max_samples &&
-  // configs.total_sample_count >= configs.max_samples))) {
+      // for now x0 is overwritten
+      // "stp  x0,  x1,  [sp, #-16]! \n\t"
+      "mov   x9, x0 \n\t"
+      "adrp  x0, __emutls_v.stats\n\t"
+      "add   x0, x0, :lo12:__emutls_v.stats\n\t"
+      // note this call will   uses x8 x0 x16 x17
+      "bl    __emutls_get_address\n\t"
+      "mov   x16, x0             \n\t" // ret value in x16
+      "mov   x0,  x9            \n\t"
+      // "ldp  x0,  x1,  [sp], #16 \n\t"
+      // x0: Profile Data
+      // x16: local_stats
 
-  // if the disable flag is set:
-  // this means
-  // if (ProfileData->DisabledFlag) == 0
+      "ldrb	w8, [x16, #8] \n\t" // read local_stats->init
+      "cbnz w8, pCount \n\t"        // branch if init != 0 (==1)
+      // call init (if not already initialized)
+      "mov	w8, #1 \n\t"
+      "strb	w8, [x16, #8] \n\t" // local_stats->init = 1
+      "bl	init_perf_util_helper \n\t"
 
-  {
-    int *pCount = ((PMUStats *)local_stats)->count + ProfileData->fID;
-    if (*pCount >= MAX_DATA_SIZE) {
-      ProfileData->DisabledFlag = true;
-    }
-    // printf("%d\n", ProfileData->fID);
+      "pCount: \n\t"
+      // "b _instrument_blink \n\t" // SKIP HACK REMOVE
 
-    if (ProfileData->DisabledFlag == true) {
-      // this could be at a different thread and at a different instrumentation
-      // spot
-      *pCount = 0;
+      "ldr	w9, [x0] \n\t" // ProfileData->fID
+      "add	x8, x16, x9, lsl #2 \n\t"
+      "add  x8, x8, #16 \n\t" // &(local_stats->count)[ProfileData->fID]
+      "ldr  w9, [x8] \n\t"
+      "cmp	w9, #16384 \n\t" // comparing = 4 >> 12 = 16384
+      "b.lo disableFlag \n\t"    // branch if less than:
+      "mov	w9, #1       \n\t"
+      "str	w9, [x0, #16] \n\t"
+      // "mov x0, x0 \n\t"
+      // "mov w1, w9 \n\t"
+      // "bl dump_data_array_helper \n\t"
+      // "b done\n\t"
+      "disableFlag: \n\t"
+      "ldr	w9, [x0, #16] \n\t"
+      // *pCount is in x8
+      "cbz  w9, notDisabled \n\t"
+      "str wzr, [x8] \n\t" // *pCount = 0
+      "b done \n\t"
+      // else:
+      "notDisabled: \n\t"
+      "ldr w9, [x8] \n\t"
+      "add w9, w9, #1 \n\t"
+      "str w9, [x8] \n\t" // *pCount += 1
 
-      return NULL;
-    }
-    // //     // uint64_t *ret;
-    // //     // asm("mov %0, lr" : "=r"(ret)); // return addr
-    // //     // *(ret - 11*4) = 0x12345; // rewrite with "b +13"
-    // //     return NULL;
-    // //   }
-    *pCount += 1;
-  }
+      // at this point x0 can be used as scratch
+      "_instrument_blink: \n\t"
+      "ldr    w8, [x16]        \n\t" // x8 = size (extended from 32bit unsigned)
+      "add    x0, x16, x8, lsl #4 \n\t" // x0 = base + (size * 16) (each field
+                                        // is 16 bytes)
+      "add    x0, x0, #8192    \n\t"    // + 8192  (2 << 12)
+      "add    x0, x0, #16      \n\t"    // + 16    (total 8208)
+      "str    x1, [x0]         \n\t"    // *(base + size + 8208) = x1
+      "isb \n\t"
+      "mrs	x9, PMEVCNTR5_EL0 \n\t"
+      "str	x9, [x0, #8] \n\t"
 
-  {
-    Data *data =
-        &(((PMUStats *)local_stats)->data[((PMUStats *)local_stats)->size]);
-    data->source_location = CodeLocationID;
-    // access PMU counter
-    int64_t value;
-    asm volatile("isb \n\t"
-                 // asm volatile(
-                 "mrs %0, pmevcntr5_el0"
-                 : "=r"(value));
-    // ld x0 [data, 2]
-    data->pmu_value = value;
-  }
-
-  if (++(((PMUStats *)local_stats)->size) < MAX_DATA_SIZE) {
-    return NULL;
-  }
-  // {
-  //   register int max_size asm("w0") = MAX_DATA_SIZE;
-  //   asm volatile(
-  //     "ldr w1, [%0]  \n"
-  //     "add w1, w1, #1\n"
-  //     "cmp w1, %w1   \n"
-  //     "b.ge 2f       \n"
-  //     "str w1, [%0]  \n"
-  //     "b 3f          \n"
-  //     "2: \n"
-  //     "str wzr, [%0]  \n"
-  //     :
-  //     : "r"(&(local_stats->size)), "r"(max_size)
-  //     : "cc", "memory"
-
-  //   );
-  // }
-
-  // dump_data_array(stats.data, stats.size);
-  // set_regs();
-  dump_data_array_helper(((PMUStats *)local_stats),
-                         ((PMUStats *)local_stats)->size);
-  ((PMUStats *)local_stats)->size = 0;
-  // dump_data_array_helper(NULL, 0);
-  // asm volatile("mov x0, %0\n\t"
-  //              "mov w1, %1\n\t"
-  //               // "stp x29, x30, [sp, #-16]!\n\t"
-  //               "bl dump_data_array_helper\n\t"
-  //               // "ldp x29, x30, [sp], #16\n\t"
-  //               :
-  //               : "r" (local_stats->data), "r" (local_stats->size)
-  //               : "x0", "w1");
-  // print_regs();
-  // asm volatile("3: \n");
-  return NULL;
+      "ldr	w8, [x16]  \n\t"
+      "add  w8, w8, #1 \n\t"
+      "str  w8, [x16]  \n\t"
+      "cmp	w8, #16384    \n\t"
+      "b.lo	done \n\t"
+      "str wzr, [x16] \n\t" // reset size to 0
+      "mov x0, x16\n\t"     // x16 stores the pointer to local_stats
+      "mov w1, w8\n\t"      // w8 stores the current size (already incremented)
+      "bl dump_data_array_helper\n\t"
+      "done: \n\t"
+      "ldp  x8, x9, [sp], #16 \n\t"
+      "ldp	x29, x30, [sp], #16 \n\t");
 }
 // Blink's tracing function (instrumented at function exit)
 // WARNING: Be careful modifying this code, it is tailored to only use registers
