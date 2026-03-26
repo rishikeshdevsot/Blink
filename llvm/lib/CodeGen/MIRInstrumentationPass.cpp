@@ -196,7 +196,8 @@ bool MIRInstrumentation::doFinalization(Module &M) {
 void MIRInstrumentation::addCodeInfoToMap(MachineFunction &MF,
                                           const DebugLoc &DL,
                                           unsigned UniqueCodeID,
-                                          unsigned EntryCodeID) {
+                                          unsigned EntryCodeID,
+                                          std::string info) {
   SmallVector<std::string, 8> CodeInfo;
   StringRef FunctionName = MF.getName();
   unsigned LineNumber = 0;
@@ -211,6 +212,8 @@ void MIRInstrumentation::addCodeInfoToMap(MachineFunction &MF,
   CodeInfo.push_back(FileName.str());
   CodeInfo.push_back(std::to_string(LineNumber));
   CodeInfo.push_back(std::to_string(EntryCodeID));
+  CodeInfo.push_back(info);
+
   MIRCodeLocationMapping[UniqueCodeID] = CodeInfo;
 }
 
@@ -265,8 +268,33 @@ MachineInstr *MIRInstrumentation::bbContainsReturn(MachineBasicBlock &MBB) {
   return nullptr;
 }
 
-MachineInstr *MIRInstrumentation::instrument_callees(
-    MachineFunction &MF, MachineBasicBlock &MBB, const TargetInstrInfo &TII) {
+std::string get_callee_name(const MachineInstr &MI) {
+  for (const MachineOperand &MO : MI.operands()) {
+    if (MO.isGlobal()) {
+      const GlobalValue *GV = MO.getGlobal();
+      return GV->getName().str();
+    }
+
+    if (MO.isSymbol()) {
+      return MO.getSymbolName();
+    }
+    // if (MO.isExternalSymbol()) {
+    //   return MO.getSymbolName();
+    // }
+    // if (MO.isReg()) {
+    //   Register R = MO.getReg();
+    //   // StringRef r_name = TRI->getRegAsmName(R);
+    //   return "register";
+    // }
+  }
+  return "";
+}
+
+MachineInstr *MIRInstrumentation::instrument_callees(MachineFunction &MF,
+                                                     MachineBasicBlock &MBB,
+                                                     const TargetInstrInfo &TII,
+                                                     unsigned &instPointID,
+                                                     bool dry_run) {
   // SmallVector<MachineInstr*, 16> callInstrs;
 
   // for (auto &MBBI : MBB) {
@@ -277,27 +305,41 @@ MachineInstr *MIRInstrumentation::instrument_callees(
   //     // callInstrs.pushback(callInstr);
   //   }
   // }
-
   for (auto MI = MBB.begin(), ME = MBB.end(); MI != ME; ++MI) {
     // also skip tail return, which otherwise would be treated as a call
+
+    // some functions are tail-returned: this will be captured to be equivalent
+    // as an exit function
 
     if (!MI->isCall() || MI->isReturn()) {
       continue;
     }
 
+    if (dry_run) {
+      instPointID += 2;
+      continue;
+    }
+    // actually perform the instrumentation by inserting instructions.
+
+    const MachineInstr &cMI = *MI;
+    std::string CalleeName = get_callee_name(cMI);
+
     // TODO if CalleeName in includeList, can probably skip...
     //
-    StringRef CalleeName = "";
-    for (const MachineOperand &MO : MI->operands()) {
-      if (MO.isGlobal()) {
-        CalleeName = MO.getGlobal()->getName();
-      } else if (MO.isSymbol()) {
-        CalleeName = MO.getSymbolName();
-      }
-    }
-    unsigned CalleeEntryID = ++UniqueCodeLocationID;
+    // const DebugLoc &DL = MI->getDebugLoc();
+    // if (DL && DL.get()) {
+    //   StringRef File = DL.get()->getFilename();
+    //   if (File.contains("include")) {
+    //      continue;
+    //   }
+    // }
 
+    BuildMI(MBB, MI, MI->getDebugLoc(),
+            TII.get(TargetOpcode::MIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION))
+        .addImm(TII.getTemporaryMachineProfileRegister(MBB))
+        .addImm(instPointID++);
     // Instrument Exit
+    unsigned CalleeEntryID = ++UniqueCodeLocationID;
     BuildMI(MBB, MI, MI->getDebugLoc(),
             TII.get(TargetOpcode::MIP_INSTRUMENTATION))
         .addReg(TII.getTemporaryMachineProfileRegister(MBB))
@@ -307,12 +349,18 @@ MachineInstr *MIRInstrumentation::instrument_callees(
         .addImm(
             0) // Flag to specify whether instrumentation is for an exit block
         .addImm(BlinkMode == "dynamic");
-    addCodeInfoToMap(MF, MI->getDebugLoc(), CalleeEntryID, 0);
+    addCodeInfoToMap(MF, MI->getDebugLoc(), CalleeEntryID, 0, CalleeName);
 
     auto NextIt = std::next(MI);
+    // move past the call
+
+    BuildMI(MBB, NextIt, NextIt->getDebugLoc(),
+            TII.get(TargetOpcode::MIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION))
+        .addImm(TII.getTemporaryMachineProfileRegister(MBB))
+        .addImm(instPointID++);
 
     unsigned CalleeExitID = ++UniqueCodeLocationID;
-    BuildMI(MBB, NextIt, MI->getDebugLoc(),
+    BuildMI(MBB, NextIt, NextIt->getDebugLoc(),
             TII.get(TargetOpcode::MIP_INSTRUMENTATION))
         .addReg(TII.getTemporaryMachineProfileRegister(MBB))
         .addImm(CalleeExitID)
@@ -321,7 +369,8 @@ MachineInstr *MIRInstrumentation::instrument_callees(
         .addImm(
             0) // Flag to specify whether instrumentation is for an exit block
         .addImm(BlinkMode == "dynamic");
-    addCodeInfoToMap(MF, MI->getDebugLoc(), CalleeExitID, CalleeEntryID);
+    addCodeInfoToMap(MF, NextIt->getDebugLoc(), CalleeExitID, CalleeEntryID,
+                     "callee_exit");
   }
   return nullptr;
 }
@@ -346,35 +395,40 @@ bool MIRInstrumentation::runOnMachineFunction(MachineFunction &MF) {
   // Count number of exit basic blocks in this function
   // A basic block containing the return instruction is treated as an exit basic
   // block
-  unsigned ExitBasicBlockCount = 0;
+  unsigned TotalLocationCount = 0;
   if (!MIREntryOnly) {
     for (uint32_t BlockID = 0; BlockID < MBBs.size(); BlockID++) {
       auto &MBB = *MBBs[BlockID];
       MachineInstr *RetInstr = bbContainsReturn(MBB);
       if (RetInstr) {
-        ExitBasicBlockCount++;
+        TotalLocationCount++;
       }
     }
+    for (uint32_t BlockID = 0; BlockID < MBBs.size(); BlockID++) {
+      auto &MBB = *MBBs[BlockID];
+      // dry_run == true: just to increment TotalLocationCount
+      instrument_callees(MF, MBB, TII, TotalLocationCount, true);
+    }
   }
-
   // Add an MIR instrumentation to mark this function for instrumentation
   unsigned functionID = UniqueFunctionID++;
   BuildMI(EntryBlock, MBBI, DL,
           TII.get(TargetOpcode::MIP_FUNCTION_INSTRUMENTATION_MARKER))
       .addImm(getControlFlowGraphSignature(MBBs))
-      .addImm(ExitBasicBlockCount)
+      .addImm(TotalLocationCount)
       .addImm(functionID); // an unique function ID for
   ++NumInstrumented;
 
   // to guarantee that the entry is the smallest ID
   unsigned EntryCodeID = ++UniqueCodeLocationID;
+  unsigned instPointCount = 0; // does not include the entry
 
   if (EnableMachineCallGraph) {
 
     // instrument callees TODO add flag for enabling this feature
     for (uint32_t BlockID = 0; BlockID < MBBs.size(); BlockID++) {
       auto &MBB = *MBBs[BlockID];
-      instrument_callees(MF, MBB, TII);
+      instrument_callees(MF, MBB, TII, instPointCount, false);
     }
 
     // Instrument entry
@@ -388,10 +442,9 @@ bool MIRInstrumentation::runOnMachineFunction(MachineFunction &MF) {
             0) // Flag to specify whether instrumentation is for an exit block
         .addImm(BlinkMode == "dynamic");
 
-    addCodeInfoToMap(MF, DL, EntryCodeID, 0); // 0 means it is an entry
+    addCodeInfoToMap(MF, DL, EntryCodeID, 0, "entry"); // 0 means it is an entry
 
     if (!MIREntryOnly) {
-      unsigned ExitBlockID = 0;
       for (uint32_t BlockID = 0; BlockID < MBBs.size(); BlockID++) {
         auto &MBB = *MBBs[BlockID];
         // Exit Basic Block
@@ -411,8 +464,8 @@ bool MIRInstrumentation::runOnMachineFunction(MachineFunction &MF) {
               MBB, MBBIReturn, DLReturn,
               TII.get(TargetOpcode::MIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION))
               .addImm(TII.getTemporaryMachineProfileRegister(MBB))
-              .addImm(ExitBlockID);
-          ExitBlockID++;
+              .addImm(instPointCount);
+          instPointCount++;
 
           // Instrument Exit
           BuildMI(MBB, MBBIReturn, DLReturn,
@@ -424,7 +477,7 @@ bool MIRInstrumentation::runOnMachineFunction(MachineFunction &MF) {
               .addImm(0) // Flag to specify whether instrumentation is for an
                          // exit block
               .addImm(BlinkMode == "dynamic");
-          addCodeInfoToMap(MF, DLReturn, UniqueCodeID, EntryCodeID);
+          addCodeInfoToMap(MF, DLReturn, UniqueCodeID, EntryCodeID, "exit");
         }
       }
     }

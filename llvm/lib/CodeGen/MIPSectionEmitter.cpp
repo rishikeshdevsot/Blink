@@ -88,6 +88,9 @@ void MIPSectionEmitter::runOnFunctionInstrumentationMarker(
   MFInfo Info;
   Info.Func = &MI.getMF()->getFunction();
   Info.StartSymbol = AP.TM.getSymbol(Info.Func);
+  //  AP.TM.getSymbol(Info.Func);
+  //   OutContext.getOrCreateSymbol(getMangledName(Info.Func) +
+  //   "_instPointID_ENTRY");
   Info.EndSymbol = CurrentFunctionEndSymbol;
   Info.RawProfileSymbol =
       OutContext.getOrCreateSymbol(getMangledName(Info.Func) + "$RAW");
@@ -110,7 +113,8 @@ void MIPSectionEmitter::runOnBasicBlockInstrumentationMarker(
   const auto &F = MI.getMF()->getFunction();
   auto BlockID = MI.getOperand(1).getImm();
   MBBInfo Info;
-  Info.StartSymbol = OutContext.createTempSymbol("mip_exit_instrumentation");
+  Info.StartSymbol = OutContext.getOrCreateSymbol(F.getName() + "_instPointID" +
+                                                  std::to_string(BlockID));
   OS.emitLabel(Info.StartSymbol);
   auto *FunctionSymbol = AP.TM.getSymbol(&F);
   auto &FunctionInfo = FunctionInfos[FunctionSymbol];
@@ -268,8 +272,14 @@ void MIPSectionEmitter::emitMIPFunctionData(MFInfo &Info, unsigned int fID) {
       if (Info.BasicBlockInfos.count(BlockID)) {
         const MBBInfo &BasicBlockInfo = Info.BasicBlockInfos[BlockID];
         OS.AddComment("Block " + Twine(BlockID) + " Offset");
-        OS.emitAbsoluteSymbolDiff(BasicBlockInfo.StartSymbol, Info.StartSymbol,
-                                  4);
+        // OS.emitAbsoluteSymbolDiff(BasicBlockInfo.StartSymbol,
+        // Info.StartSymbol, 4); this is a deferred evaluation to avoid
+        OS.emitValue(
+            MCBinaryExpr::createSub(
+                MCSymbolRefExpr::create(BasicBlockInfo.StartSymbol, OutContext),
+                MCSymbolRefExpr::create(Info.StartSymbol, OutContext),
+                OutContext),
+            4);
       } else {
         OS.emitZeros(4);
       }
