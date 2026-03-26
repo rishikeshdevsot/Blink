@@ -226,7 +226,7 @@ void EnableEntryInstrumentation(int64_t FunctionAddress,
 
   int64_t RewriteAddress = FunctionAddress;
   uintptr_t target_addr = (uintptr_t)RewriteAddress;
-
+  // TODO
   *((uint32_t *)target_addr) = 0xD503201F; // encoding for noop
 }
 
@@ -239,12 +239,12 @@ void EnableExitInstrumentation(int64_t FunctionAddress,
   const uint32_t *ExitBlockOffsetArray = &(ProfileData->ExitBlockOffsetArray);
   for (int i = 0; i < NumExitBlocks; i++) {
     int64_t RewriteAddress = FunctionAddress + ExitBlockOffsetArray[i];
-
+    // printf("ExitBlockOffsetArray %d\n", ExitBlockOffsetArray[i]);
     // Extra placehold instruction for exit instrumentation
     // that should be skipped
     RewriteAddress = RewriteAddress + 4;
     uintptr_t target_addr = (uintptr_t)RewriteAddress;
-
+    // TODO
     *((uint32_t *)target_addr) = 0xD503201F; // encoding for noop
   }
 }
@@ -285,6 +285,8 @@ void EnableAllInstrumentation() {
     ProfileData_t *ProfileData = (ProfileData_t *)(MIPDataIndexer);
     uint32_t SkipValNextFunction =
         CalculateSkipValueForNextFunction(ProfileData->NumExitBlocks);
+    // printf("ProfileData %u, offset %u\n", ProfileData->NumExitBlocks,
+    // ProfileData->OffsetToFunction);
     if (!ProfileData->DisabledFlag) {
       MIPDataIndexer += SkipValNextFunction; // Move to the next function
       continue;
@@ -294,8 +296,8 @@ void EnableAllInstrumentation() {
         (int64_t)MIPDataIndexer + ProfileData->OffsetToFunction;
 
     // Disable
-    // EnableEntryInstrumentation(FunctionAddress, ProfileData);
-    // EnableExitInstrumentation(FunctionAddress, ProfileData);
+    EnableEntryInstrumentation(FunctionAddress, ProfileData);
+    EnableExitInstrumentation(FunctionAddress, ProfileData);
 
     // Reset invocation count
     // ProfileData->CallCount = 0;
@@ -398,6 +400,12 @@ void __llvm_dump_mip_profile(void) {
   LoadAndDumpBlinkConfigs();
   InitPMUStats(&stats);
 
+  if (_configs.mode) {
+    // do nothing if lib is not provided/supported in dynamic mod
+    if (!MakeCodePagesWriteable()) {
+      return;
+    }
+  }
   pthread_t ControlThread;
   pthread_create(&ControlThread, NULL, ControlThreadFunction, NULL);
 
@@ -596,17 +604,20 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
       "adrp  x16, enable_global\n\t"
       "ldr   w16, [x16, #:lo12:enable_global]\n\t"
       "cbz   w16, done \n\t" // branch if enable_global == 0
-
+      // "bl set_regs \n\t"
       // for now x0 is overwritten
-      // "stp  x0,  x1,  [sp, #-16]! \n\t"
-      "mov   x9, x0 \n\t"
+      "stp  x0,  x1,  [sp, #-16]! \n\t"
+      "stp  x2,  xzr,  [sp, #-16]! \n\t"
+      // "mov   x9, x0 \n\t"
       "adrp  x0, __emutls_v.stats\n\t"
       "add   x0, x0, :lo12:__emutls_v.stats\n\t"
-      // note this call will   uses x8 x0 x16 x17
+      // note this call will   uses x8 x9 x0 x1 x2 x16 x17
       "bl    __emutls_get_address\n\t"
       "mov   x16, x0             \n\t" // ret value in x16
-      "mov   x0,  x9            \n\t"
-      // "ldp  x0,  x1,  [sp], #16 \n\t"
+      // "mov   x0,  x9            \n\t"
+      "ldp  x2,  xzr,  [sp], #16 \n\t"
+      "ldp  x0,  x1,  [sp], #16 \n\t"
+
       // x0: Profile Data
       // x16: local_stats
 
@@ -637,6 +648,12 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
       // *pCount is in x8
       "cbz  w9, notDisabled \n\t"
       "str wzr, [x8] \n\t" // *pCount = 0
+      // to self disable x8 will hold ret
+      "mov w9, 0xe \n\t" // load instruction b+14 (0x1400 000e)
+      "movk w9, 0x1400, lsl #16 \n\t"
+      "mov x8, lr \n\t"
+      "ldr w9, [x8, #-44] \n\t" // (11 instr)
+
       "b done \n\t"
       // else:
       "notDisabled: \n\t"
@@ -653,7 +670,7 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
       "add    x0, x0, #16      \n\t"    // + 16    (total 8208)
       "str    x1, [x0]         \n\t"    // *(base + size + 8208) = x1
       "isb \n\t"
-      "mrs	x9, PMEVCNTR5_EL0 \n\t"
+      "mrs	x9, PMCCNTR_EL0 \n\t"
       "str	x9, [x0, #8] \n\t"
 
       "ldr	w8, [x16]  \n\t"
@@ -666,6 +683,7 @@ void *__custom_instrumentation(ProfileData_t *ProfileData,
       "mov w1, w8\n\t"      // w8 stores the current size (already incremented)
       "bl dump_data_array_helper\n\t"
       "done: \n\t"
+      // "bl print_regs \n\t"
       "ldp  x8, x9, [sp], #16 \n\t"
       "ldp	x29, x30, [sp], #16 \n\t");
 }

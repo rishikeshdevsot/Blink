@@ -59,15 +59,18 @@ private:
   StringRef ModuleFileName;
 
   void addCodeInfoToMap(MachineFunction &MF, const DebugLoc &DL,
-                        unsigned UniqueCodeID, unsigned EntryCodeID);
+                        unsigned UniqueCodeID, unsigned EntryCodeID,
+                        std::string info);
   bool doInitialization(Module &M) override;
   bool doFinalization(Module &M) override;
   bool shouldInstrumentMachineFunction(const MachineFunction &MF) const;
   bool runOnMachineFunction(MachineFunction &MF) override;
   bool bbContainsPthreadExit(MachineBasicBlock &MBB);
   MachineInstr *bbContainsReturn(MachineBasicBlock &MBB);
+  // std::string get_callee_name(const MachineInstr &MI);
   MachineInstr *instrument_callees(MachineFunction &MF, MachineBasicBlock &MBB,
-                                   const TargetInstrInfo &TII);
+                                   const TargetInstrInfo &TII,
+                                   unsigned &instPointID, bool dry_run);
   uint32_t getControlFlowGraphSignature(
       SmallVectorImpl<MachineBasicBlock *> &MBBs) const;
   void getMachineBasicBlocks(MachineFunction &MF,
