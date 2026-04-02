@@ -30,6 +30,7 @@
 
 using namespace llvm;
 using namespace llvm::MachineProfile;
+unsigned int fID = 0;
 
 std::string getMangledName(const Function *F) {
   std::string MangledName;
@@ -88,6 +89,8 @@ void MIPSectionEmitter::runOnFunctionInstrumentationMarker(
   MFInfo Info;
   Info.Func = &MI.getMF()->getFunction();
   Info.StartSymbol = AP.TM.getSymbol(Info.Func);
+  // Info.StartSymbol = FuncSym;
+  // Info.StartSymbol = entry;
   //  AP.TM.getSymbol(Info.Func);
   //   OutContext.getOrCreateSymbol(getMangledName(Info.Func) +
   //   "_instPointID_ENTRY");
@@ -113,8 +116,7 @@ void MIPSectionEmitter::runOnBasicBlockInstrumentationMarker(
   const auto &F = MI.getMF()->getFunction();
   auto BlockID = MI.getOperand(1).getImm();
   MBBInfo Info;
-  Info.StartSymbol = OutContext.getOrCreateSymbol(F.getName() + "_instPointID" +
-                                                  std::to_string(BlockID));
+  Info.StartSymbol = OutContext.createTempSymbol("mip_exit_instrumentation");
   OS.emitLabel(Info.StartSymbol);
   auto *FunctionSymbol = AP.TM.getSymbol(&F);
   auto &FunctionInfo = FunctionInfos[FunctionSymbol];
@@ -254,11 +256,9 @@ void MIPSectionEmitter::emitMIPFunctionData(MFInfo &Info, unsigned int fID) {
 
     // Value to store the function address
     OS.AddComment("Function PC Offset");
-    OS.emitValue(MCBinaryExpr::createSub(
-                     MCSymbolRefExpr::create(Info.StartSymbol, OutContext),
-                     MCSymbolRefExpr::create(ReferenceLabel, OutContext),
-                     OutContext),
-                 TT.isArch64Bit() ? 8 : 4);
+
+    OS.emitAbsoluteSymbolDiff(Info.StartSymbol, ReferenceLabel,
+                              TT.isArch64Bit() ? 8 : 4);
 
     // Emit flag to enable or disable instrumentation
     // Default is disabled
@@ -272,14 +272,8 @@ void MIPSectionEmitter::emitMIPFunctionData(MFInfo &Info, unsigned int fID) {
       if (Info.BasicBlockInfos.count(BlockID)) {
         const MBBInfo &BasicBlockInfo = Info.BasicBlockInfos[BlockID];
         OS.AddComment("Block " + Twine(BlockID) + " Offset");
-        // OS.emitAbsoluteSymbolDiff(BasicBlockInfo.StartSymbol,
-        // Info.StartSymbol, 4); this is a deferred evaluation to avoid
-        OS.emitValue(
-            MCBinaryExpr::createSub(
-                MCSymbolRefExpr::create(BasicBlockInfo.StartSymbol, OutContext),
-                MCSymbolRefExpr::create(Info.StartSymbol, OutContext),
-                OutContext),
-            4);
+        OS.emitAbsoluteSymbolDiff(BasicBlockInfo.StartSymbol, Info.StartSymbol,
+                                  4);
       } else {
         OS.emitZeros(4);
       }
@@ -398,10 +392,10 @@ void MIPSectionEmitter::serializeToMIPRawSection() {
   }
 
   emitMIPHeader(MIP_FILE_TYPE_RAW);
-  unsigned int fID = 0;
   for (auto &Pair : FunctionInfos) {
     emitMIPFunctionData(Pair.second, fID++);
   }
+  OS.emitValueToAlignment(64);
 }
 
 void MIPSectionEmitter::serializeToMIPMapSection() {

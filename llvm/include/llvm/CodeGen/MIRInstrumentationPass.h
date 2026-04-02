@@ -13,6 +13,7 @@
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SpecialCaseList.h"
+#include <mutex>
 #include <sstream>
 
 namespace llvm {
@@ -56,6 +57,8 @@ private:
   static std::atomic<unsigned> UniqueCodeLocationID;
   static std::atomic<unsigned> UniqueFunctionID;
   DenseMap<unsigned, SmallVector<std::string, 8>> MIRCodeLocationMapping;
+  std::mutex MapMutex; // protects MIRCodeLocationMapping
+
   StringRef ModuleFileName;
 
   void addCodeInfoToMap(MachineFunction &MF, const DebugLoc &DL,

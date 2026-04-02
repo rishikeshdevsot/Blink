@@ -198,22 +198,32 @@ void MIRInstrumentation::addCodeInfoToMap(MachineFunction &MF,
                                           unsigned EntryCodeID,
                                           std::string info) {
   SmallVector<std::string, 8> CodeInfo;
-  StringRef FunctionName = MF.getName();
+  std::string FunctionName = MF.getName().str();
   unsigned LineNumber = 0;
-  StringRef FileName("");
-  if (DL && DL.get()) {
-    LineNumber = DL.getLine();
+  std::string FileName = "";
+  if (DL) {
+    if (const DILocation *Loc = DL.get()) {
+
+      // line number is safe once Loc exists
+      LineNumber = Loc->getLine();
+
+      // added from a segfault
+      if (const DIFile *File = Loc->getFile()) {
+        FileName = File->getFilename().str();
+      }
+    }
   }
-  if (const DILocation *DIL = DL.get()) {
-    FileName = DL.get()->getFilename();
-  }
-  CodeInfo.push_back(FunctionName.str());
-  CodeInfo.push_back(FileName.str());
+  CodeInfo.push_back(FunctionName);
+  CodeInfo.push_back(FileName);
   CodeInfo.push_back(std::to_string(LineNumber));
   CodeInfo.push_back(std::to_string(EntryCodeID));
   CodeInfo.push_back(info);
 
-  MIRCodeLocationMapping[UniqueCodeID] = CodeInfo;
+  // MIRCodeLocationMapping[UniqueCodeID] = CodeInfo;
+  {
+    std::lock_guard<std::mutex> Lock(MapMutex);
+    MIRCodeLocationMapping[UniqueCodeID] = CodeInfo;
+  }
 }
 
 void MIRInstrumentation::printMIPCodeInfoMapping() {
@@ -226,18 +236,21 @@ void MIRInstrumentation::printMIPCodeInfoMapping() {
     errs() << "Failed to open file: ./MIPCodeInfo/MIPCodeInfo-"
            << std::to_string(hash_value(ModuleFileName)) << ".csv" << "\n";
   }
-  for (const auto &pair : MIRCodeLocationMapping) {
-    if (!EC)
-      OutFile << pair.first << ",";
-    LLVM_DEBUG(dbgs() << "UniqueCodeID: " << pair.first << ",");
-    for (auto item : pair.second) {
+  {
+    std::lock_guard<std::mutex> Lock(MapMutex);
+    for (const auto &pair : MIRCodeLocationMapping) {
       if (!EC)
-        OutFile << item << ",";
-      LLVM_DEBUG(dbgs() << "SourceLocation: " << item << ",");
+        OutFile << pair.first << ",";
+      LLVM_DEBUG(dbgs() << "UniqueCodeID: " << pair.first << ",");
+      for (auto item : pair.second) {
+        if (!EC)
+          OutFile << item << ",";
+        LLVM_DEBUG(dbgs() << "SourceLocation: " << item << ",");
+      }
+      if (!EC)
+        OutFile << "\n";
+      LLVM_DEBUG(dbgs() << "\n");
     }
-    if (!EC)
-      OutFile << "\n";
-    LLVM_DEBUG(dbgs() << "\n");
   }
   if (!EC)
     OutFile.close();
@@ -333,13 +346,13 @@ MachineInstr *MIRInstrumentation::instrument_callees(MachineFunction &MF,
     //   }
     // }
 
-    BuildMI(MBB, MI, MI->getDebugLoc(),
+    BuildMI(MBB, MI, DebugLoc(),
             TII.get(TargetOpcode::MIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION))
         .addImm(TII.getTemporaryMachineProfileRegister(MBB))
         .addImm(instPointID++);
     // Instrument Exit
     unsigned CalleeEntryID = ++UniqueCodeLocationID;
-    BuildMI(MBB, MI, MI->getDebugLoc(),
+    BuildMI(MBB, MI, DebugLoc(),
             TII.get(TargetOpcode::MIP_INSTRUMENTATION))
         .addReg(TII.getTemporaryMachineProfileRegister(MBB))
         .addImm(CalleeEntryID)
@@ -353,13 +366,13 @@ MachineInstr *MIRInstrumentation::instrument_callees(MachineFunction &MF,
     auto NextIt = std::next(MI);
     // move past the call
 
-    BuildMI(MBB, NextIt, NextIt->getDebugLoc(),
+    BuildMI(MBB, NextIt, DebugLoc(),
             TII.get(TargetOpcode::MIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION))
         .addImm(TII.getTemporaryMachineProfileRegister(MBB))
         .addImm(instPointID++);
 
     unsigned CalleeExitID = ++UniqueCodeLocationID;
-    BuildMI(MBB, NextIt, NextIt->getDebugLoc(),
+    BuildMI(MBB, NextIt, DebugLoc(),
             TII.get(TargetOpcode::MIP_INSTRUMENTATION))
         .addReg(TII.getTemporaryMachineProfileRegister(MBB))
         .addImm(CalleeExitID)
@@ -368,7 +381,9 @@ MachineInstr *MIRInstrumentation::instrument_callees(MachineFunction &MF,
         .addImm(
             0) // Flag to specify whether instrumentation is for an exit block
         .addImm(BlinkMode == "dynamic");
-    addCodeInfoToMap(MF, NextIt->getDebugLoc(), CalleeExitID, CalleeEntryID,
+    // send MI instead NextIt: otherwise it leads to a weird segmentation fault
+    // :(
+    addCodeInfoToMap(MF, MI->getDebugLoc(), CalleeExitID, CalleeEntryID,
                      "callee_exit");
   }
   return nullptr;
@@ -411,7 +426,7 @@ bool MIRInstrumentation::runOnMachineFunction(MachineFunction &MF) {
   }
   // Add an MIR instrumentation to mark this function for instrumentation
   unsigned functionID = UniqueFunctionID++;
-  BuildMI(EntryBlock, MBBI, DL,
+  BuildMI(EntryBlock, MBBI, DebugLoc(),
           TII.get(TargetOpcode::MIP_FUNCTION_INSTRUMENTATION_MARKER))
       .addImm(getControlFlowGraphSignature(MBBs))
       .addImm(TotalLocationCount)
@@ -431,7 +446,7 @@ bool MIRInstrumentation::runOnMachineFunction(MachineFunction &MF) {
     }
 
     // Instrument entry
-    BuildMI(EntryBlock, MBBI, DL,
+    BuildMI(EntryBlock, MBBI, DebugLoc(),
             TII.get(TargetOpcode::MIP_INSTRUMENTATION))
         .addReg(TII.getTemporaryMachineProfileRegister(EntryBlock))
         .addImm(EntryCodeID)
@@ -460,14 +475,14 @@ bool MIRInstrumentation::runOnMachineFunction(MachineFunction &MF) {
           // the offset is used to figure out where the instrumented
           // instructions at exit are located to perform binary rewriting.
           BuildMI(
-              MBB, MBBIReturn, DLReturn,
+              MBB, MBBIReturn, DebugLoc(),
               TII.get(TargetOpcode::MIP_BASIC_BLOCK_COVERAGE_INSTRUMENTATION))
               .addImm(TII.getTemporaryMachineProfileRegister(MBB))
               .addImm(instPointCount);
           instPointCount++;
 
           // Instrument Exit
-          BuildMI(MBB, MBBIReturn, DLReturn,
+          BuildMI(MBB, MBBIReturn, DebugLoc(),
                   TII.get(TargetOpcode::MIP_INSTRUMENTATION))
               .addReg(TII.getTemporaryMachineProfileRegister(MBB))
               .addImm(UniqueCodeID)

@@ -239,7 +239,9 @@ void EnableExitInstrumentation(int64_t FunctionAddress,
   const uint32_t *ExitBlockOffsetArray = &(ProfileData->ExitBlockOffsetArray);
   for (int i = 0; i < NumExitBlocks; i++) {
     int64_t RewriteAddress = FunctionAddress + ExitBlockOffsetArray[i];
-    // printf("ExitBlockOffsetArray %d\n", ExitBlockOffsetArray[i]);
+    // FILE *fp = fopen("/data/local/tmp/enable_exit", "a");
+    // fprintf(fp, "ExitBlockOffsetArray %d\n", ExitBlockOffsetArray[i]);
+    // fclose(fp);
     // Extra placehold instruction for exit instrumentation
     // that should be skipped
     RewriteAddress = RewriteAddress + 4;
