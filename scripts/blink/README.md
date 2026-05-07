@@ -115,7 +115,7 @@ Tracing for the compiled program is disabled until the user enables it by runnin
 
 `./configure-blink`
 
-This binary is available in [here](https://rnd-gitlab-ca-y.huawei.com/Scope/BiShengMobileStudio/yscope/-/tree/main/blink?ref_type=heads).
+This binary can be built from scripts/blink
 
 ### Mandatory parameters
 1. `--pid`: Provide the pid of the process to be traced. If the process contains multiple libraries and only one of them is compiled with Blink, only the blink-enabled library will be traced.
