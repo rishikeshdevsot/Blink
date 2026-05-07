@@ -49,7 +49,8 @@ make LLVM_HOME=/path/to/tools-output/out/llvm-install \
 ```
 
 This produces an `example` binary (AArch64 ELF) containing Blink's instrumentations and Blink's ELF sections (`__llvm_mipmap` and `__llvm_mipraw`) embedded. It also generates a `MIPCodeInfo/` directory with the instrumentation metadata required for analyzing Blink traces.
-
+> [!NOTE]
+> This binary can only be run on Huawei Mate mobile phones that are unlocked and rooted.
 
 ## Detailed Instructions
 The official Blink user guide for compiling an OpenHarmony library, deploying it on the phone, and collecting and processing traces is available [here](./Blink-User-Guide.md).
