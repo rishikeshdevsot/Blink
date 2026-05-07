@@ -206,6 +206,13 @@ sed -i 's/"target_cpu": "arm"/"target_cpu": "arm64"/' \
 grep target_cpu $BASE/oh/system/vendor/hihope/rk3568/config.json
 
 ### 2.7 Enable Patch
+1. Disable compiler warnings:
+```bash
+sed -i 's/fatal_linker_warnings = true/fatal_linker_warnings = false/' \
+    $BASE/oh/system/build/config/compiler/BUILD.gn
+```
+
+2. Add the flags to the linker when building render_service
 ```bash
 cd $BASE/oh/system/foundation/graphic/graphic_2d
 patch -p1 < $TOOLS/toolchain/llvm-project/blink_scripts/patches/render_service_base_blink.patch
@@ -214,6 +221,8 @@ patch -p1 < $TOOLS/toolchain/llvm-project/blink_scripts/patches/render_service_b
 
 ```bash
 cd $BASE/oh/system
+# create a folder to hold to instrumentation location mappings
+mkdir -p out/rk3568/MIPCodeInfo/
 ./build.sh --product-name rk3568 \
     --build-target foundation/graphic/graphic_2d/rosen/modules/render_service_base:librender_service_base \
     --no-prebuilt-sdk
