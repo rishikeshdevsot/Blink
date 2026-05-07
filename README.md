@@ -15,8 +15,6 @@ This section describes how to build Blink and compile a simple program with Blin
 
 A Dockerfile is provided that automates building the toolchain([Official build instructions]((https://github.com/openharmony/third_party_llvm-project/blob/master/llvm-build/README.md))). The image contains only the build environment; the Blink source and output directories are volume-mounted at runtime.
 
-> [!NOTE]
-> Blink only supports the AArch64 backend 
 **Requirements:** Internet access, 400 GB disk
 
 **1. Build the image** (from inside the Blink repository):
@@ -39,6 +37,8 @@ docker run --rm \
 - After the build completes, the toolchain will be at `/path/to/tools-output/out/llvm-install` on the host.
 </details>
 
+> [!NOTE]
+> Blink only supports the AArch64 backend 
 
 ### Compiling an example program using Blink
 TODO (YiFan)
