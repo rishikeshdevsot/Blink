@@ -41,7 +41,7 @@ There are four parts of setup required to use Blink:
 *Note*: Only one library in a process can be instrumented with Blink currently. Multi-library instrumentation support will be added later.
 
 ## Compile Time Setup
-Before compiling OHOS or its associated libraries, create a folder called `MIPCodeInfo` under `out/generic_generic_arm_64only/general_all_phone_standard`, this folder will be used to store source level info as .csv files for all the instrumented locations.
+Before compiling OHOS (OpenHarmony OS) or its associated libraries, create a folder called `MIPCodeInfo` under `out/generic_generic_arm_64only/general_all_phone_standard`, this folder will be used to store source level info as .csv files for all the instrumented locations.
 It will be used in the post-processing step. When compiling a simple C/C++ file, please create this directory from where `clang/clang++` will be called.
 
 When compiling OHOS, make warnings non-fatal by setting `fatal_linker_warnings = true` to `false` in build/config/compiler/BUILD.gn.
