@@ -1,19 +1,47 @@
 # Blink
-Blink is a lightweight instrumentation framework that provides robust coverage for short-lived routines. It is built on top of [OpenHarmony's LLVM-based compiler toolchain](https://github.com/openharmony/third_party_llvm-project) with 3 additional components: an LLVM IR pass, a Machine IR pass and a compiler-rt plugin. This repo contains these components on top the toolchain. 
+Blink is a lightweight instrumentation framework that provides robust coverage for short-lived routines. It is built on top of [OpenHarmony's LLVM-based compiler toolchain](https://github.com/openharmony/third_party_llvm-project). 
 
-TODO (Rishi): Add filenames and line numbers corresponding to the changes so evaluators know what to look for. 
+Blink's changes to the upstream toolchain span commits `61ffacf3b822..a4948380dc9f`, touching the compiler-rt MIP runtime (`compiler-rt/lib/mip/`), the MIR instrumentation pass (`llvm/lib/CodeGen/MIRInstrumentationPass.cpp`), the AArch64 assembly printer (`llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp`), the MIP section emitter (`llvm/lib/CodeGen/MIPSectionEmitter.cpp`), new target opcodes, and 7 lit tests under `llvm/test/CodeGen/AArch64/Blink/`. The remaining files in this repo (under `scripts/`, `example/`, `Docker/`, etc.) are supporting infrastructure for building and evaluating Blink.
 
 The following sections describe how to build and use Blink.
 
 ## Getting Started
 This section describes how to build Blink and compile a simple program with Blink's instrumentation.
 
-### Build instructions: 
+### Build instructions:
 
 [This link](https://github.com/openharmony/third_party_llvm-project/blob/master/llvm-build/README.md) contains the toolchain's build instructions
 
 > [!NOTE]
-> Blink only supports the AArch64 backend so follow the instructions for ["Build process of AArch64 toolchain"](https://github.com/openharmony/third_party_llvm-project/tree/master/llvm-build#build-process-of-aarch64-toolchain)   
+> Blink only supports the AArch64 backend 
+
+<details>
+<summary><strong>Docker build (recommended)</strong></summary>
+
+A Dockerfile is provided that automates building the toolchain. The image contains only the build environment; the Blink source and output directories are volume-mounted at runtime.
+
+**Requirements:** Internet access, 400 GB disk
+
+**1. Build the image** (from inside the Blink repository):
+
+```bash
+docker build -t blink-llvm-toolchain -f Docker/Dockerfile.llvm-toolchain .
+```
+
+**2. Run the build:**
+
+```bash
+docker run --rm \
+  -v /path/to/Blink:/home/builder/tools/toolchain/llvm-project \
+  -v /path/to/tools-output:/home/builder/tools \
+  blink-llvm-toolchain
+```
+
+- The first `-v` mounts your Blink checkout as `llvm-project` inside the tools root.
+- The second `-v` mounts the tools root on the host. Repo sync output and the built toolchain will be written here.
+- After the build completes, the toolchain will be at `/path/to/tools-output/out/llvm-install` on the host.
+</details>
+
 
 ### Compiling an example program using Blink
 TODO (YiFan)
