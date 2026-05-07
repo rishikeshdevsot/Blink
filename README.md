@@ -44,6 +44,8 @@ TODO (YiFan)
 
 
 ## Detailed Instructions
+The official Blink user guide to compile an OpenHarmony library, deploy it on the phone, collect and process traces is [here](./Blink-User-Guide.md)
+
 This section describes how to run the scripts to replicate the results from "When Sampling Lies: Trustworthy Performance Profiling for Flat Workloads with
 Blink (Operational Systems)".
 
