@@ -103,7 +103,7 @@ sed -i 's/fatal_linker_warnings = true/fatal_linker_warnings = false/' \
 2. Add the flags to the linker when building render_service
 ```bash
 cd $BASE/oh/system/foundation/graphic/graphic_2d
-patch -p1 < $TOOLS/toolchain/llvm-project/blink_scripts/patches/render_service_base_blink.patch
+patch -p1 < $TOOLS/toolchain/llvm-project/patches/render_service_base_blink.patch
 ```
 ### Build the Library
 
