@@ -32,8 +32,7 @@ Once the number of samples for an interval have been collected for a function, t
 This guide explains how to use Blink to compile and trace the execution of C/C++ programs and libraries using its different modes.
 
 ## Compiler Setup
-Ensure that your BiSheng compiler is based on the `blink-main` branch. You can find it [here](https://codehub-y.huawei.com/BiSheng-Mobile/Mobile-CPU/BiSheng/files?ref=blink-main). We are actively working to merge this branch into the main branch.
-
+Ensure that your BiSheng compiler is based on the `blink-main` branch. You can find it [here](https://codehub-y.huawei.com/BiSheng-Mobile/Mobile-CPU/BiSheng/files?ref=blink-main).
 ## Using Blink
 There are four parts of setup required to use Blink: 
 1. Compile Time Setup: Passing the necessary compiler flags to BiSheng compiler for instrumentation a binary/library.
