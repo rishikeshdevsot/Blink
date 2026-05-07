@@ -48,7 +48,7 @@ make LLVM_HOME=/path/to/tools-output/out/llvm-install \
      SYSROOT=/path/to/tools-output/out/sysroot/aarch64-linux-ohos
 ```
 
-This produces an `example` binary (AArch64 ELF) with Blink's `__llvm_mipmap` and `__llvm_mipraw` sections embedded, and a `MIPCodeInfo/` directory with the instrumentation metadata required for analyzing Blink traces.
+This produces an `example` binary (AArch64 ELF) containing Blink's instrumentations and Blink's ELF sections (`__llvm_mipmap` and `__llvm_mipraw`) embedded. It also generates a `MIPCodeInfo/` directory with the instrumentation metadata required for analyzing Blink traces.
 
 
 ## Detailed Instructions
