@@ -294,21 +294,6 @@ python3 compute_jank.py /path/to/smartperf_trace.db
 
 **Output:** Comma-separated consecutive-jank histogram to stdout.
 
-## Paper Evaluation Mapping
-
-| Paper Section | Figure/Table | Scripts Used |
-|---------------|-------------|-------------|
-| §2.3 Coverage (Fig. 2) | Unique functions covered | `librenderservice_boxplot_coverage.py` |
-| §3 PMU detection | — | `blink/blink-pmu-detect.cpp` |
-| §3 Runtime configuration | — | `blink/configure-blink.cpp` |
-| §3 Post-processing | — | `post_process/post-process.py`, `pmu_filter.py` |
-| §4.1 Correctness (Fig. 4) | Blink accuracy without ISB | `small_function.py` |
-| §4.2 Overhead (Table 1) | Jank distribution | `framedrop/compute_jank_simple.py` |
-| §4.3.1 Auto-tuning (Fig. 5) | Base vs. custom flag comparison | `blink/callee_result.py` |
-| §4.3.2 Jank investigation | Frame-level cycle attribution | `blink/configure-blink.cpp` (pervasive mode), `post-process.py` |
-| §4.3.3 LSEO (Table 2) | Instruction count for `update` function | `post-process.py` (`--compute_self`, ISB enabled) |
-| §4.3.4 Test suite (Fig. 6, Table 3) | Blink vs. Perf per-workload comparison | `process_workload.py` (both), `librenderservice_boxplot.py` |
-
 ## Notes
 
 - **Hardcoded paths:** Some scripts still contain hardcoded absolute paths (e.g., `hiperf_host` location in `parse_perf.py`, report directories in `librenderservice_boxplot_coverage.py`). These need to be updated to match your environment. The main visualization scripts (`librenderservice_boxplot.py` and `small_function.py`) accept all input paths via command-line arguments — run with `--help` to see options.
