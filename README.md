@@ -6,7 +6,7 @@ TODO (Rishi): Add filenames and line numbers corresponding to the changes so eva
 The following sections describe how to build and use Blink.
 
 ## Getting Started
-This section describes how to build Blink and use it to compile a simple program.
+This section describes how to build Blink and compile a simple program with Blink's instrumentation.
 
 ### Build instructions: 
 
