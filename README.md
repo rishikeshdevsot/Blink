@@ -1,7 +1,8 @@
 # Blink
 Blink is a lightweight instrumentation framework that provides robust coverage for short-lived routines. It is built on top of [OpenHarmony's LLVM-based compiler toolchain](https://github.com/openharmony/third_party_llvm-project). 
 
-Blink's changes to the upstream toolchain span commits `61ffacf3b822..4e9d65b005cc2`, touching the compiler-rt MIP runtime (`compiler-rt/lib/mip/`), the MIR instrumentation pass (`llvm/lib/CodeGen/MIRInstrumentationPass.cpp`), the AArch64 assembly printer (`llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp`), the MIP section emitter (`llvm/lib/CodeGen/MIPSectionEmitter.cpp`), new target opcodes, and 7 lit tests under `llvm/test/CodeGen/AArch64/Blink/`. The remaining files in this repo (under `scripts/`, `example/`, `Docker/`, etc.) are supporting infrastructure for building and evaluating Blink.
+
+Blink's changes to the upstream toolchain span commits `12585554e7...4e9d65b005cc2`. Commits `12585554e7...d42c43cec3` are from an [open-source PR](https://reviews.llvm.org/D104060) to add Machine Instrumentation. The changes add a compiler-rt runtime (`compiler-rt/lib/mip/`), an MIR instrumentation pass (`llvm/lib/CodeGen/MIRInstrumentationPass.cpp`) and an MIP section emitter (`llvm/lib/CodeGen/MIPSectionEmitter.cpp`). They update the AArch64 assembly printer (`llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp`), add new target opcodes and 7 lit tests under `llvm/test/CodeGen/AArch64/Blink/`.
 
 The following sections describe how to build and use Blink.
 
@@ -51,7 +52,7 @@ make LLVM_HOME=/path/to/tools-output/out/llvm-install \
      SYSROOT=/path/to/tools-output/out/sysroot/aarch64-linux-ohos
 ```
 
-This produces an `example` binary (AArch64 ELF) with Blink's `__llvm_mipmap` and `__llvm_mipraw` sections embedded, and a `MIPCodeInfo/` directory with the instrumentation metadata CSV.
+This produces an `example` binary (AArch64 ELF) with Blink's `__llvm_mipmap` and `__llvm_mipraw` sections embedded, and a `MIPCodeInfo/` directory with the instrumentation metadata required for analyzing Blink traces.
 
 
 ## Detailed Instructions
