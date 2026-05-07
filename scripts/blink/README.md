@@ -93,7 +93,7 @@ index 4ce31c23a8..24b2d11a0a 100644
  void VsyncStation::OnVsyncTimeOut()
 -- 
 
-
+```
 
 ## phone
 2. 
