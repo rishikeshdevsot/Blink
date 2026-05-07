@@ -2,7 +2,7 @@
 Blink is a lightweight instrumentation framework that provides robust coverage for short-lived routines. It is built on top of [OpenHarmony's LLVM-based compiler toolchain](https://github.com/openharmony/third_party_llvm-project). 
 
 
-Blink's changes to the upstream toolchain span commits `12585554e7...4e9d65b005cc2`. Commits `12585554e7...d42c43cec3` are from an [open-source PR](https://reviews.llvm.org/D104060) to add Machine Instrumentation. The changes add a compiler-rt runtime (`compiler-rt/lib/mip/`), an MIR instrumentation pass (`llvm/lib/CodeGen/MIRInstrumentationPass.cpp`) and an MIP section emitter (`llvm/lib/CodeGen/MIPSectionEmitter.cpp`). They update the AArch64 assembly printer (`llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp`), add new target opcodes and 7 lit tests under `llvm/test/CodeGen/AArch64/Blink/`.
+Blink's changes to the upstream toolchain span commits `12585554e7...4e9d65b005cc2`. Commits `12585554e7...d42c43cec3` are from an [open-source PR](https://reviews.llvm.org/D104060) to add Machine Instrumentation. These changes add a compiler-rt runtime (`compiler-rt/lib/mip/`), an MIR instrumentation pass (`llvm/lib/CodeGen/MIRInstrumentationPass.cpp`), and a MIP section emitter (`llvm/lib/CodeGen/MIPSectionEmitter.cpp`). They update the AArch64 assembly printer (`llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp`), add new target opcodes, and add 7 lit tests under `llvm/test/CodeGen/AArch64/Blink/`.
 
 The following sections describe how to build and use Blink.
 
@@ -11,10 +11,7 @@ This section describes how to build Blink and compile a simple program with Blin
 
 ### Build instructions:
 
-<details>
-<summary><strong>Docker build (recommended)</strong></summary>
-
-A Dockerfile to automate building the toolchain ([Official build instructions](https://github.com/openharmony/third_party_llvm-project/blob/master/llvm-build/README.md)) is provided under [](Docker/). 
+A Dockerfile to automate building the toolchain ([official build instructions](https://github.com/openharmony/third_party_llvm-project/blob/master/llvm-build/README.md)) is provided under `Docker/`.
 
 **Requirements:** Internet access, 400 GB disk
 
@@ -34,20 +31,19 @@ docker run --rm \
 ```
 
 - The first `-v` mounts your Blink repository into the container. The entrypoint script will symlink it into place after `repo sync` completes.
-- The second `-v` mounts the workspace directory where the toolchain pre-requisites will be checked out and built. `repo sync` will download the source tree here (the `llvm-toolchain.xml` manifest, which pulls repos like `toolchain/llvm-project`, `build`, `prebuilts`, etc.). The built binaries will be written to `/path/to/tools-output/out/llvm-install` on the host.
-</details>
+- The second `-v` mounts the workspace directory where the toolchain prerequisites will be checked out and built. `repo sync` will download the source tree here (the `llvm-toolchain.xml` manifest, which pulls repos like `toolchain/llvm-project`, `build`, `prebuilts`, etc.). The built binaries will be written to `/path/to/tools-output/out/llvm-install` on the host.
 
 > [!NOTE]
-> Blink only supports the AArch64 backend 
+> Blink only supports the AArch64 backend
 
 ### Compiling an example program using Blink
 
-After the Docker build completes, the toolchain is at `/path/to/tools-output/out/llvm-install` and the sysroot at `/path/to/tools-output/out/sysroot`.
+After the Docker build completes, the toolchain is at `/path/to/tools-output/out/llvm-install`, and the sysroot at `/path/to/tools-output/out/sysroot`.
 
 Build the example program with Blink instrumentation:
 
 ```bash
-cd blink_scripts/example
+cd example
 make LLVM_HOME=/path/to/tools-output/out/llvm-install \
      SYSROOT=/path/to/tools-output/out/sysroot/aarch64-linux-ohos
 ```
@@ -56,9 +52,9 @@ This produces an `example` binary (AArch64 ELF) with Blink's `__llvm_mipmap` and
 
 
 ## Detailed Instructions
-The official Blink user guide to compile an OpenHarmony library, deploy it on the phone, collect and process traces is [here](./Blink-User-Guide.md)
+The official Blink user guide for compiling an OpenHarmony library, deploying it on the phone, and collecting and processing traces is available [here](./Blink-User-Guide.md).
 
 ## Limitations
-1. Running Blink compiled binaries requires Huawei Mate mobile phones that are unlocked and rooted. 
-2. Blink compiled binaries have only been tested on OpenHarmony OS (v5.0.0) running on AArch64 architecture. In its current state, they cannot be run on other architectures. 
+1. Running Blink-compiled binaries requires Huawei Mate mobile phones that are unlocked and rooted.
+2. Blink-compiled binaries have only been tested on OpenHarmony OS (v5.0.0) running on AArch64 architecture. In its current state, they cannot be run on other architectures.
 
