@@ -42,8 +42,8 @@ sudo apt install -y \
 
 ### 1.2 Initialize the Repository
 
-`$PWD` refers to the root build directory, e.g. `/home/ubuntu/tools`.
-All instructions start from `$PWD`.
+`$TOOLS` refers to the root build directory, e.g. `/home/ubuntu/tools`.
+All instructions start from `$TOOLS`.
 
 ```bash
 repo init -u https://gitcode.com/OpenHarmony/manifest.git \
@@ -63,7 +63,7 @@ already exists, rename the old one to `llvm-project-old`.
 
 ```bash
 # target location
-$PWD/toolchain/llvm-project
+$TOOLS/toolchain/llvm-project
 ```
 
 ### 1.4 Install Prebuilt Dependencies
@@ -77,8 +77,8 @@ bash toolchain/llvm-project/llvm-build/env_prepare.sh
 ### 1.5 Patch Python Scripts to call Python3 only
 
 ```bash
-find $PWD/build -name '*.py' | xargs -IOUT sed -i 's:#!/usr/bin/env python:#!/usr/bin/env python3:' OUT
-find $PWD/build -name '*.py' | xargs -IOUT sed -i 's:#!/usr/bin/env python33:#!/usr/bin/env python3:' OUT
+find $TOOLS/build -name '*.py' | xargs -IOUT sed -i 's:#!/usr/bin/env python:#!/usr/bin/env python3:' OUT
+find $TOOLS/build -name '*.py' | xargs -IOUT sed -i 's:#!/usr/bin/env python33:#!/usr/bin/env python3:' OUT
 ```
 
 ### 1.6 Build the Toolchain
@@ -95,7 +95,7 @@ python3 ./toolchain/llvm-project/llvm-build/build.py \
     --compression-format gz
 ```
 
-Built toolchain will be at `$PWD/out/llvm-install`.
+Built toolchain will be at `$TOOLS/out/llvm-install`.
 
 ### 1.7 Rebuilding
 
@@ -106,7 +106,7 @@ Built toolchain will be at `$PWD/out/llvm-install`.
 
 Under this repo `Blink` in `blink_script/example`, there is an example you can build for `ohos-aarch64`
 to verify the toolchain works. Make sure to update `LLVM_HOME` in the `Makefile`
-to point to your built toolchain at `$PWD/out/llvm-install`.
+to point to your built toolchain at `$TOOLS/out/llvm-install`.
 
 ---
 
@@ -179,31 +179,44 @@ bash build/prebuilts_download.sh
 ### 2.5 Point Prebuilts at Your Built Toolchain
 
 Replace the prebuilt clang and libcxx-ndk with your freshly built toolchain:
+> `$TOOLS` here refers to your Part 1 toolchain build root (e.g. `/home/ubuntu/tools`).
 
 ```bash
 cd $BASE/oh/system/prebuilts/clang/ohos/linux-x86_64/
 
 # Back up and replace libcxx-ndk
 mv libcxx-ndk{,.bak}
-tar xzf $PWD/packages/libcxx-ndk-dev-linux-x86_64.tar.gz
+tar xzf $TOOLS/packages/libcxx-ndk-dev-linux-x86_64.tar.gz
 
 # Back up and replace llvm with your built toolchain
 mv llvm llvm.bak
-ln -s $PWD/out/install/linux-x86_64/clang-dev/ ./llvm
+ln -s $TOOLS/out/install/linux-x86_64/clang-dev/ ./llvm
 ```
 
-> `$PWD` here refers to your Part 1 toolchain build root (e.g. `/home/ubuntu/tools`).
 
-### 2.6 Build the Library
+### 2.6 Force AArch64 Target
+
+The rk3568 product config hardcodes target_cpu as arm (32-bit). Patch it to arm64 before building:
+```bash
+sed -i 's/"target_cpu": "arm"/"target_cpu": "arm64"/' \
+    $BASE/oh/system/vendor/hihope/rk3568/config.json
+```
+
+# Verify
+grep target_cpu $BASE/oh/system/vendor/hihope/rk3568/config.json
+
+### 2.7 Enable Patch
+```bash
+cd $BASE/oh/system/foundation/graphic/graphic_2d
+patch -p1 < $TOOLS/toolchain/llvm-project/blink_scripts/patches/render_service_base_blink.patch
+```
+### 2.8 Build the Library
 
 ```bash
 cd $BASE/oh/system
-
 ./build.sh --product-name rk3568 \
     --build-target foundation/graphic/graphic_2d/rosen/modules/render_service_base:librender_service_base \
-    --no-prebuilt-sdk \
-    --gn-args "target_cpu=\"arm64\""
-
+    --no-prebuilt-sdk
 ```
 
 Output will be at:
@@ -212,3 +225,6 @@ Output will be at:
 ./out/rk3568/graphic/graphic_2d/librender_service_base.z.so
 ./out/rk3568/lib.unstripped/graphic/graphic_2d/librender_service_base.z.so
 ```
+verify its 64-bit (aarch64) with `file`
+remove `output`
+

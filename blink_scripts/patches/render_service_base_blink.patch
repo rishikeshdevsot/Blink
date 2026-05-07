@@ -1,0 +1,15 @@
+--- a/rosen/modules/render_service_base/BUILD.gn
++++ b/rosen/modules/render_service_base/BUILD.gn
+@@ -594,7 +593,12 @@ config("render_service_base_link_config") {
+       "-Wl,-mllvm",
+       "-Wl,-wholeprogramdevirt-check=fallback",
+       "-Wl,-Bsymbolic",
++      "-fmachine-profile-generate",
++      "-Wl,-mllvm,-enable-machine-instrumentation",
++      "-Wl,-mllvm,-enable-machine-call-graph",
++      "-Wl,-mllvm,--blink-mode=dynamic",
+     ]
++    # "-Wl,-mllvm,--blink-whitelist-file=whitelist_top100.txt"
+ 
+     if (graphic_2d_feature_enable_pgo && enable_enhanced_opt) {
+       ldflags += [ "-Wl,--aarch64-inline-plt" ]
