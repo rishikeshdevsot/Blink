@@ -13,7 +13,7 @@ This section describes how to build Blink and compile a simple program with Blin
 <details>
 <summary><strong>Docker build (recommended)</strong></summary>
 
-A Dockerfile to automate building the toolchain ([Official build instructions]((https://github.com/openharmony/third_party_llvm-project/blob/master/llvm-build/README.md))) is provided under Docker. 
+A Dockerfile to automate building the toolchain ([Official build instructions](https://github.com/openharmony/third_party_llvm-project/blob/master/llvm-build/README.md)) is provided under [](Docker/). 
 
 **Requirements:** Internet access, 400 GB disk
 
