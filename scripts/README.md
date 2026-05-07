@@ -1,4 +1,4 @@
-# Evaluation Scripts for Blink
+# Scripts to run and evaluate Blink
 
 This directory contains the scripts used in the evaluation of the OSDI '26 paper *"When Sampling Lies: Trustworthy Performance Profiling for Flat Workloads with Blink"*. The evaluation covers four areas: correctness, overhead/perturbation, coverage, and real-world utility (auto-tuning, jank investigation, LSEO validation, and test-suite integration).
 
@@ -6,14 +6,14 @@ This directory contains the scripts used in the evaluation of the OSDI '26 paper
 
 ```
 scripts/
-├── blink/                      # Runtime binaries for the target phone (ARM64 / OpenHarmony)
-│   ├── configure-blink.cpp      # Sends tracing configuration to a Blink-instrumented process
-│   ├── blink-pmu-detect.cpp     # Detects which PMU counter is usable on the phone
-│   ├── Makefile                 # Cross-compiles both binaries with BiSheng Clang
+├── blink/                       # Runtime setup code to be run on the target phone (ARM64 / OpenHarmony)
+│   ├── configure-blink.cpp      
+│   ├── blink-pmu-detect.cpp     
+│   ├── Makefile                 
 │   └── README.md                # Detailed Blink user guide (compile-time, runtime, post-processing)
-├── post_process/                # Blink trace post-processing
+├── post_process/                # Scripts to post-process Blink's raw traces into user-readable format
 │   ├── post-process.py          # Main script: raw traces → per-function summary CSVs
-│   ├── pmu_filter.py            # Library for PMU wrap-around, glitch filtering, ID mapping
+│   ├── pmu_filter.py            # Helper functions to filter known issues
 │   └── run_many_multiprocess2.sh# Batch orchestrator for many apps/workloads/runs
 ├── framedrop/                   # Frame jank analysis (overhead evaluation)
 │   ├── compute_jank_simple.py   # Jank histogram from raw .htrace text files
@@ -37,19 +37,19 @@ scripts/
 ## Prerequisites
 
 ### On the host machine (post-processing & plotting)
+- BiSheng compiler with Blink instrumentation support (see `blink/README.md`)
 - Python 3.8+ with packages: `pandas`, `numpy`, `scipy`, `tqdm`, `matplotlib`, `seaborn`, `statsmodels`
 - `c++filt` (binutils) — used for C++ name demangling
 - `tar`, `uuidgen` — used by the batch orchestrator
 
 ### On the target phone (data collection)
 - OpenHarmony/HarmonyOS device (tested on Huawei Mate 60 Pro, Kirin 9000S)
-- BiSheng compiler with Blink instrumentation support (see `blink/README.md`)
 - `hdc` (HarmonyOS Device Connector) — for pushing files and running commands on the phone
 - `hiperf_host` binary — for offline parsing of hiperf `.data` files (used by `parse_perf.py`)
 
 ## Workflow
 
-The evaluation follows a pipeline: **compile → deploy → collect → post-process → aggregate → visualize**. Steps 1–3 happen on/with the phone; steps 4–6 happen on the host.
+The evaluation follows a pipeline: **compile binary with blink → deploy binary → collect raw blink traces → post-process traces → aggregate → visualize**. Steps 2–3 happen on/with the phone; steps 1,4–6 happen on the host.
 
 ### Step 1: Compile the runtime binaries
 
