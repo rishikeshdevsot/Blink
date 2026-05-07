@@ -32,14 +32,13 @@ docker build -t blink-llvm-toolchain -f Docker/Dockerfile.llvm-toolchain .
 
 ```bash
 docker run --rm \
-  -v /path/to/Blink:/home/builder/tools/toolchain/llvm-project \
+  -v /path/to/Blink:/home/builder/blink-source \
   -v /path/to/tools-output:/home/builder/tools \
   blink-llvm-toolchain
 ```
 
-- The first `-v` mounts your Blink checkout as `llvm-project` inside the tools root.
-- The second `-v` mounts the tools root on the host. Repo sync output and the built toolchain will be written here.
-- After the build completes, the toolchain will be at `/path/to/tools-output/out/llvm-install` on the host.
+- The first `-v` mounts your Blink checkout into the container. The entrypoint script will symlink it into place after `repo sync` completes.
+- The second `-v` mounts the workspace directory where the OpenHarmony toolchain will be checked out and built. `repo sync` will download the source tree here (the `llvm-toolchain.xml` manifest, which pulls repos like `toolchain/llvm-project`, `build`, `prebuilts`, etc.), and the built toolchain will be written to `/path/to/tools-output/out/llvm-install` on the host.
 </details>
 
 
