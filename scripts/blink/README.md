@@ -1,110 +1,38 @@
-# Blink-frame User Guide 
+# Blink User Guide 
 
 ## Synopsis
-`Blink-frame` is a variant of `Blink`. You should have a good understanding of what `Blink` requires
-for setup, as this guide is for wanting to use Blink past its intended purposes.
+Blink is an instrumentation tool part of the BiSheng CPU compiler for C/C++ programs and libraries targeted for AArch64. It is used as an alternative to Linux Perf to obtain per function event counts (events here correspond to the conventions listed by perf events: hw-instructions, cpu-cycles, icache-misses etc). 
+It does so by 
+1. Compile Time Instrumentation: instrumenting the entry and exit of functions at the ASM printing stage with a call to a *tracing function* 
+2. Runtime Tracing: The tracing function reads a PMU counter programmed with a user defined event and writes the values in thread local ring buffers that are flushed to disk when full 
+3. Postprocessing Traces: A post-processing script parses the flushed buffers and calculates the median event count for each function. 
+Blink outputs to the user the median event count for each function and a perfetto trace of the executed functions.
 
-It is meant to capture all events during a "marked" period across many blink-enabled libraries.
-It only operates in Normal Mode, so no need to worry about weird kernel configuration.
+There are two modes of operations for Blink at runtime: Regular Mode and Dynamic Mode
 
-Here is an example on `libwmutil`, tagged with an arbitrarily designated LIBKEY=10.
-There are custom scripts that I wrote to facilate this process available, but the major steps are the following:
-
-## Compiler directiory:
-
-1. `git checkout blink-frame`
-2. set `#define LIBKEY 10` (this key now represents this library)
-3. set `#define REGISTER_SIGNAL 1` (0 to not register any signal handler)
-4. compile the clang compiler
-
-## `libwmutil` directory:
-1. apply following patch to add more ld_flags:
-```
-
-diff --git a/utils/BUILD.gn b/utils/BUILD.gn
-index 44416ff6f1..2b6b0f365c 100644
---- a/utils/BUILD.gn
-+++ b/utils/BUILD.gn
-@@ -229,9 +229,21 @@ ohos_shared_library("libwmutil") {
- 
-   defines += [ "FRAME_TRACE_ENABLE" ]
-   external_deps += [ "frame_aware_sched:frame_trace_intf" ]
-+
-+  ldflags = ["-Wl,-Bsymbolic",
-+      "-fmachine-profile-generate",
-+      "-Wl,-mllvm,-enable-machine-instrumentation",
-+      "-Wl,-mllvm,-enable-machine-call-graph",
-+      "-Wl,-mllvm,--blink-mode=regular",
-+      "/home/yWX1380092/flag_library/libblink_export.so",
-+      "-Wl,-rpath=/system/lib64"
-+  ]
- }
- 
- group("test") {
-   testonly = true
-   deps = [ "test:test" ]
- }
-
-diff --git a/utils/src/vsync_station.cpp b/utils/src/vsync_station.cpp
-index 4ce31c23a8..24b2d11a0a 100644
---- a/utils/src/vsync_station.cpp
-+++ b/utils/src/vsync_station.cpp
-@@ -16,7 +16,7 @@
- #include "vsync_station.h"
- 
- #include <functional>
--
-+#include <csignal>
- #include <hitrace_meter.h>
- #include <transaction/rs_interfaces.h>
- #include <ui/rs_display_node.h>
-@@ -26,6 +26,13 @@
- #include "window_frame_trace.h"
- #include "window_manager_hilog.h"
- 
-+extern uint32_t __attribute__((visibility("default"))) _enable_global;
-+
-+extern "C" {
-+    void *__custom_mark();
-+}
-+
- using namespace FRAME_TRACE;
- 
- namespace OHOS {
-@@ -172,6 +179,13 @@ void VsyncStation::RemoveCallback()
- 
- void VsyncStation::VsyncCallbackInner(int64_t timestamp, int64_t frameCount)
- {
-+
-+    _enable_global = 1;
-+    __custom_mark();
-     HITRACE_METER_FMT(HITRACE_TAG_WINDOW_MANAGER,
-         "OnVsyncCallback %" PRId64 ":%" PRId64, timestamp, frameCount);
-     Callbacks vsyncCallbacks;
-@@ -191,6 +205,11 @@ void VsyncStation::VsyncCallbackInner(int64_t timestamp, int64_t frameCount)
-             callback->onCallback(timestamp, frameCount);
-         }
-     }
-+     __custom_mark();
-+    _enable_global = 0;
-
- }
- 
- void VsyncStation::OnVsyncTimeOut()
--- 
-
-```
-
-## phone
-2. 
 ### Modes of operation
 #### Regular Mode
 In Regular Mode, the user would enable Blink's tracing on a process by running the `configure-blink` script which sends SIGUSR2 to the process to enable tracing for that process. 
 Until enabled, the tracing function will simply `return` on every invocation. Once enabled the tracing function will collect PMU counter values and write them to a thread local ring buffer.
 
-## Compiler Setup
-Ensure that your BiSheng compiler is based on the `blink-frame` branch. You can find it [here](https://codehub-y.huawei.com/BiSheng-Mobile/Mobile-CPU/BiSheng/files?ref=blink-main).
 
+#### Dynamic Mode
+*Dynamic Mode* uses binary rewriting to "disable" tracing instead of early `return`ing in the tracing function.
+ It does so by "jumping" over the instrumented instructions by adding a branch instruction(`b +offset`) above the instrumented instructions where the offset is the number of instrumented instructions. 
+This allows Blink to essentially "jump" the instrumentation making its overhead neglible. 
+
+Until Blink is enabled by the user using the `configure-blink` script, it "jumps" over all instrumentation. When the user wants to enable instrumentation, they would run the configure script, which would re-write the (`b +offset`) with a `nop` for all functions essentially undoing the "jump" and running the instrumented instructions. Please read the `Blink` paper for more technical details.
+
+This mode also supports *sampling*: It allows the user to specify how many samples per function they would like to collect per second to control the overhead of Blink. One sample is a pair of entry and exit event counts for one invocations of a function.  
+Once the number of samples for an interval have been collected for a function, the instrumented instructions for that function will be disabled/"jumped" over until the next interval.  
+
+*Note*: This feature root access because it needs the kernel's XPM mode to be disabled. 
+
+
+This guide explains how to use Blink to compile and trace the execution of C/C++ programs and libraries using its different modes.
+
+## Compiler Setup
+Ensure that your BiSheng compiler is based on the `blink-main` branch. You can find it [here](https://codehub-y.huawei.com/BiSheng-Mobile/Mobile-CPU/BiSheng/files?ref=blink-main).
 ## Using Blink
 There are four parts of setup required to use Blink: 
 1. Compile Time Setup: Passing the necessary compiler flags to BiSheng compiler for instrumentation a binary/library.
@@ -186,7 +114,7 @@ Tracing for the compiled program is disabled until the user enables it by runnin
 
 `./configure-blink`
 
-This binary is available in [here](https://rnd-gitlab-ca-y.huawei.com/Scope/BiShengMobileStudio/yscope/-/tree/main/blink?ref_type=heads).
+This binary can be built from scripts/blink
 
 ### Mandatory parameters
 1. `--pid`: Provide the pid of the process to be traced. If the process contains multiple libraries and only one of them is compiled with Blink, only the blink-enabled library will be traced.
