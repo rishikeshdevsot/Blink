@@ -1,6 +1,4 @@
-# Scripts to run and evaluate Blink
-
-This directory contains the scripts used in the evaluation of the OSDI '26 paper *"When Sampling Lies: Trustworthy Performance Profiling for Flat Workloads with Blink"*. The evaluation covers four areas: correctness, overhead/perturbation, coverage, and real-world utility (auto-tuning, jank investigation, LSEO validation, and test-suite integration).
+# Scripts relevant for setting up and evaluating Blink
 
 ## Directory Overview
 
