@@ -2,6 +2,8 @@
 
 We are using OpenHarmony v5.0.0, which is similar to the closed-source version we used to collect the data.
 
+> **Variable reference:** `$BASE` = root directory for OpenHarmony source, `$TOOLS` = toolchain build root, `$BLINK_ROOT` = path to the Blink repository.
+
 ### Sync the Source
 
 ```bash
@@ -67,7 +69,7 @@ bash build/prebuilts_download.sh
 ### Point Prebuilts at Your Built Toolchain
 
 Replace the prebuilt clang and libcxx-ndk with your freshly built toolchain:
-> `$TOOLS` here refers to your Part 1 toolchain build root (e.g. `/home/ubuntu/tools`).
+> `$TOOLS` = toolchain build root (e.g. `/home/ubuntu/tools`).
 
 ```bash
 cd $BASE/oh/system/prebuilts/clang/ohos/linux-x86_64/
@@ -103,7 +105,7 @@ sed -i 's/fatal_linker_warnings = true/fatal_linker_warnings = false/' \
 2. Add the flags to the linker when building render_service
 ```bash
 cd $BASE/oh/system/foundation/graphic/graphic_2d
-patch -p1 < $TOOLS/toolchain/llvm-project/patches/render_service_base_blink.patch
+patch -p1 < $BLINK_ROOT/patches/render_service_base_blink.patch
 ```
 ### Build the Library
 

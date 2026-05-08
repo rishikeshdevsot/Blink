@@ -1,0 +1,86 @@
+# Dockerfile for building the LLVM toolchain (Part 1 of the Blink build process)
+#
+# This Dockerfile automates the steps described in the
+# [official build instructions](https://github.com/openharmony/third_party_llvm-project/blob/master/llvm-build/README.md).
+#
+# The image provides the build environment (system deps, repo tool).
+# The actual build runs at container start time with the Blink directory
+# and output directory volume-mounted from the host.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Build requirements:
+#   - Network access (for repo init/sync and prebuilt downloads)
+#   - 400 GB disk, 32+ GB RAM recommended
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Build the image (one time):
+#
+#   docker build -t blink-llvm-toolchain -f Docker/Dockerfile.llvm-toolchain .
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Run the build:
+#
+#   docker run --rm \
+#     -v /path/to/Blink:/home/builder/blink-source \
+#     -v /path/to/tools-output:/home/builder/tools \
+#     blink-llvm-toolchain
+#
+# - The first -v mounts your Blink checkout outside the tools root (to avoid
+#   conflicting with repo sync, which also writes to toolchain/llvm-project).
+#   The entrypoint script symlinks it into place after repo sync completes.
+# - The second -v mounts the tools root where repo sync output and the build
+#   output will be written. After the build completes, the toolchain will be at
+#   /path/to/tools-output/out/llvm-install on the host.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+FROM ubuntu:22.04
+
+ARG TOOLS_ROOT=/home/builder/tools
+ARG DEBIAN_FRONTEND=noninteractive
+
+# 1.1 Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    swig \
+    python3-dev \
+    libedit-dev \
+    libncurses5-dev \
+    binutils-dev \
+    gcc-multilib \
+    abigail-tools \
+    elfutils \
+    pkg-config \
+    autoconf \
+    autoconf-archive \
+    git-lfs \
+    clang \
+    lld \
+    cmake \
+    ninja-build \
+    curl \
+    ca-certificates \
+    python3 \
+    gnupg \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install the 'repo' tool (required for repo init/sync)
+RUN curl -o /usr/local/bin/repo https://storage.googleapis.com/git-repo-downloads/repo \
+    && chmod a+x /usr/local/bin/repo
+
+# Configure git for repo tool
+RUN git config --global user.name "Builder" \
+    && git config --global user.email "builder@localhost"
+
+# Create the tools root directory structure
+RUN mkdir -p ${TOOLS_ROOT}/toolchain
+
+ENV TOOLS_ROOT=${TOOLS_ROOT}
+WORKDIR ${TOOLS_ROOT}
+
+# Entrypoint script that runs all build steps
+COPY Docker/build-llvm-toolchain.sh /usr/local/bin/build-llvm-toolchain.sh
+RUN chmod +x /usr/local/bin/build-llvm-toolchain.sh
+
+ENTRYPOINT ["/usr/local/bin/build-llvm-toolchain.sh"]
