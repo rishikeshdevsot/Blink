@@ -204,7 +204,7 @@ void MIPSectionEmitter::emitMIPHeader(MIPFileType FileType) {
   OS.AddComment("Offset To Data");
   OS.emitIntValueInHex(sizeof(MIPHeader), 4);
 
-  OS.AddBlankLine();
+  OS.addBlankLine();
 }
 
 void MIPSectionEmitter::emitMIPFunctionData(MFInfo &Info, unsigned int fID) {
@@ -231,7 +231,7 @@ void MIPSectionEmitter::emitMIPFunctionData(MFInfo &Info, unsigned int fID) {
   } else {
     RawSection = OutContext.getObjectFileInfo()->getMIPRawSection();
   }
-  OS.SwitchSection(RawSection);
+  OS.switchSection(RawSection);
 
   emitLinkageAndVisibility(Info.RawProfileSymbol);
   if (MIRInstrumentation::EnableMachineFunctionCoverage) {
@@ -283,7 +283,7 @@ void MIPSectionEmitter::emitMIPFunctionData(MFInfo &Info, unsigned int fID) {
         "Expected function coverage or call graph instrumentation.");
   }
 
-  OS.AddBlankLine();
+  OS.addBlankLine();
 }
 
 void MIPSectionEmitter::emitMIPFunctionInfo(MFInfo &Info) {
@@ -310,7 +310,7 @@ void MIPSectionEmitter::emitMIPFunctionInfo(MFInfo &Info) {
   } else {
     MapSection = OutContext.getObjectFileInfo()->getMIPMapSection();
   }
-  OS.SwitchSection(MapSection);
+  OS.switchSection(MapSection);
 
   auto *MapEntrySymbol = OutContext.getOrCreateSymbol(MangledName + "$MAP");
   emitLinkageAndVisibility(MapEntrySymbol);
@@ -366,7 +366,7 @@ void MIPSectionEmitter::emitMIPFunctionInfo(MFInfo &Info) {
   OS.emitIntValue(MangledName.size(), 4);
   OS.emitBytes(MangledName);
 
-  OS.AddBlankLine();
+  OS.addBlankLine();
 }
 
 void MIPSectionEmitter::serializeToMIPRawSection() {
@@ -381,9 +381,9 @@ void MIPSectionEmitter::serializeToMIPRawSection() {
   //       header symbol is deduplicated correctly.
   if (auto *MIPRawHeaderComdatSection =
           OutContext.getObjectFileInfo()->getMIPRawHeaderComdatSection()) {
-    OS.SwitchSection(MIPRawHeaderComdatSection);
+    OS.switchSection(MIPRawHeaderComdatSection);
   } else {
-    OS.SwitchSection(OutContext.getObjectFileInfo()->getMIPRawSection());
+    OS.switchSection(OutContext.getObjectFileInfo()->getMIPRawSection());
     auto *HeaderSymbol = getMIPSectionBeginSymbol(MIP_RAW_SECTION_NAME);
     OS.emitSymbolAttribute(HeaderSymbol, MCSymbolAttr::MCSA_Global);
     OS.emitSymbolAttribute(HeaderSymbol, MCSymbolAttr::MCSA_WeakDefinition);
@@ -410,9 +410,9 @@ void MIPSectionEmitter::serializeToMIPMapSection() {
   //       header symbol is deduplicated correctly.
   if (auto *MIPMapHeaderComdatSection =
           OutContext.getObjectFileInfo()->getMIPMapHeaderComdatSection()) {
-    OS.SwitchSection(MIPMapHeaderComdatSection);
+    OS.switchSection(MIPMapHeaderComdatSection);
   } else {
-    OS.SwitchSection(OutContext.getObjectFileInfo()->getMIPMapSection());
+    OS.switchSection(OutContext.getObjectFileInfo()->getMIPMapSection());
     auto *HeaderSymbol = getMIPSectionBeginSymbol(MIP_MAP_SECTION_NAME);
     OS.emitSymbolAttribute(HeaderSymbol, MCSymbolAttr::MCSA_Global);
     OS.emitSymbolAttribute(HeaderSymbol, MCSymbolAttr::MCSA_WeakDefinition);
