@@ -16,6 +16,7 @@
 #include "llvm/InitializePasses.h"
 #include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 
 using namespace llvm;
 
