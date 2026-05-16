@@ -1,5 +1,7 @@
 # Blink
 
+This repository contains the source code, build instructions and scripts to evaluate Blink from the OSDI'26 [paper](osdi26-paper672.pdf): "When Sampling Lies: Trustworthy Performance Profiling for Flat Workloads with Blink (Operational Systems)"
+
 Blink is a lightweight instrumentation framework that provides robust coverage for short-lived routines. It is built on top of [OpenHarmony's LLVM-based compiler toolchain](https://github.com/openharmony/third_party_llvm-project).
 
 Blink's changes to the upstream toolchain span commits `12585554e7...HEAD`. Commits `12585554e7...d42c43cec3` are from an [open-source PR](https://reviews.llvm.org/D104060) to add Machine Instrumentation. These changes add a compiler-rt runtime (`compiler-rt/lib/mip/`), an MIR instrumentation pass (`llvm/lib/CodeGen/MIRInstrumentationPass.cpp`), and a MIP section emitter (`llvm/lib/CodeGen/MIPSectionEmitter.cpp`). They update the AArch64 assembly printer (`llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp`), add new target opcodes, and add 7 lit tests under `llvm/test/CodeGen/AArch64/Blink/`.
